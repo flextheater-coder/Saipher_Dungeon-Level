@@ -1,0 +1,5 @@
+{
+  "name": "Saipher: The Twin Dungeon",
+  "description": "A top-down action-adventure prototype inspired by Zelda: A Link to the Past. Features a hot-swap mechanic between a melee brawler and a ranged caster in a dungeon environment.",
+  "requestFramePermissions": []
+}
