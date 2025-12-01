@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { UIOverlay } from './components/UIOverlay';
 import { GameStatus } from './types';
-import { LEVELS } from './constants';
+import { GAME_LEVELS as LEVELS } from './constants';
 
 export default function App() {
   const [gameStatus, setGameStatus] = useState<GameStatus>(GameStatus.MENU); // Start at MENU
