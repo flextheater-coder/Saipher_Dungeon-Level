@@ -140,6 +140,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     }
   };
 
+  // --- N64/PS1 GRAPHICS ENGINE ---
   const renderStaticMap = (theme: LevelTheme) => {
     const canvas = document.createElement('canvas');
     canvas.width = LEVEL_MAP_WIDTH * TILE_SIZE;
@@ -157,41 +158,42 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           const py = y * TILE_SIZE;
   
           if (tile === TileType.FLOOR || tile === TileType.HEART_CONTAINER || tile === TileType.GOAL) {
+            // Gouraud Shading Simulation (Distance from center darkened)
+            const dist = Math.hypot(x - LEVEL_MAP_WIDTH/2, y - LEVEL_MAP_HEIGHT/2);
+            const shade = Math.min(0.3, dist / 30);
+            
             ctx.fillStyle = theme.floorColor; 
             ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+            
+            // PS1 Dithering / Noise
+            ctx.fillStyle = `rgba(0,0,0,${shade})`;
+            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 
-            ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            // Checkerboard overlay for depth
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
             if ((x + y) % 2 === 0) ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
             
-            // --- PROCEDURAL DECORATION LOGIC ---
+            // Procedural Decor
             const seed = (x * 37 + y * 13) % 100;
             if (seed > 85) {
-                if (theme.name.includes("DESERT") || theme.name.includes("WASTELAND")) {
-                    // Draw Cactus/Rock
-                    ctx.fillStyle = '#166534';
+                if (theme.name.includes("DESERT")) {
+                    ctx.fillStyle = '#166534'; // Cactus
                     ctx.fillRect(px + 10, py + 10, 4, 12);
                     ctx.fillRect(px + 6, py + 16, 12, 4);
                     ctx.fillRect(px + 18, py + 8, 4, 8);
                 } else if (theme.name.includes("FOREST")) {
-                    // Draw Grass/Bush
-                    ctx.fillStyle = '#22c55e';
-                    ctx.beginPath();
-                    ctx.arc(px + TILE_SIZE/2, py + TILE_SIZE/2, 6, 0, Math.PI*2);
-                    ctx.fill();
+                    ctx.fillStyle = '#22c55e'; // Bush
+                    ctx.beginPath(); ctx.arc(px + TILE_SIZE/2, py + TILE_SIZE/2, 6, 0, Math.PI*2); ctx.fill();
                 } else if (theme.name.includes("MOUNTAIN")) {
-                    // Draw Rock
-                    ctx.fillStyle = '#78350f';
-                    ctx.beginPath();
-                    ctx.moveTo(px + 10, py + 30); ctx.lineTo(px + 20, py + 15); ctx.lineTo(px + 30, py + 30);
-                    ctx.fill();
+                    ctx.fillStyle = '#78350f'; // Rock
+                    ctx.beginPath(); ctx.moveTo(px + 10, py + 30); ctx.lineTo(px + 20, py + 15); ctx.lineTo(px + 30, py + 30); ctx.fill();
                 } else {
-                    // Default speckle
-                    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-                    ctx.fillRect(px + (seed%20), py + (seed%15), 4, 4);
+                    ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(px + (seed%20), py + (seed%15), 4, 4);
                 }
             }
             
-            ctx.strokeStyle = theme.wallColor;
+            // Grid Lines (Retro aesthetic)
+            ctx.strokeStyle = `rgba(0,0,0,0.2)`;
             ctx.lineWidth = 1;
             ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
           }
@@ -205,30 +207,36 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
             const py = y * TILE_SIZE;
 
             if (tile === TileType.WALL) {
-                const wallFaceHeight = 20; 
+                const wallFaceHeight = 24; // Taller walls for 3D effect
                 if (y < LEVEL_MAP_HEIGHT - 1 && levelGrid.current[y+1][x] !== TileType.WALL) {
                     ctx.fillStyle = 'rgba(0,0,0,0.5)';
                     ctx.fillRect(px, py + TILE_SIZE, TILE_SIZE, 16);
                 }
                 
-                ctx.fillStyle = theme.wallColor; 
+                // Front Face (Vertex Lit Gradient)
+                const grad = ctx.createLinearGradient(px, py, px, py + TILE_SIZE);
+                grad.addColorStop(0, theme.wallColor);
+                grad.addColorStop(1, '#000'); // Bottom is darker
+                ctx.fillStyle = grad;
                 ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE - wallFaceHeight);
+                
+                // Top Face (Brightest)
                 ctx.fillStyle = theme.wallTopColor;
                 ctx.fillRect(px, py + TILE_SIZE - wallFaceHeight, TILE_SIZE, wallFaceHeight);
-                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                
+                // Edge Highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.2)';
                 ctx.fillRect(px, py + TILE_SIZE - wallFaceHeight, TILE_SIZE, 2);
                 
-                // --- FOREST TREES ON WALLS ---
+                // FOREST WALLS (Trees)
                 if (theme.name.includes("FOREST")) {
                     const seed = (x * 17 + y * 23) % 100;
-                    if (seed > 50) {
-                        ctx.fillStyle = '#064e3b';
-                        ctx.beginPath();
-                        ctx.moveTo(px + TILE_SIZE/2, py - 10);
-                        ctx.lineTo(px + TILE_SIZE, py + 20);
-                        ctx.lineTo(px, py + 20);
-                        ctx.fill();
-                    }
+                    ctx.fillStyle = '#064e3b'; // Dark Pine
+                    ctx.beginPath();
+                    ctx.moveTo(px + TILE_SIZE/2, py - 10);
+                    ctx.lineTo(px + TILE_SIZE, py + 20);
+                    ctx.lineTo(px, py + 20);
+                    ctx.fill();
                 }
             }
         }
@@ -236,7 +244,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     return canvas;
   };
 
-  // ... [drawCharacter and drawWeapon Functions remain the same as previous corrected version] ...
   const drawCharacter = (ctx: CanvasRenderingContext2D, char: CharacterType, x: number, y: number, facing: Direction, isWalking: boolean) => {
     ctx.save();
     ctx.translate(x, y);
@@ -347,11 +354,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
                   const maxFrame = charConfig.attackDuration;
                   const progress = 1 - (frame / maxFrame);
                   const ease = 1 - Math.pow(1 - progress, 4); 
-                  const totalSwipe = 2.8; 
-                  const startAngle = -totalSwipe / 2 - 0.2;
+                  const totalSwipe = 3.8; 
+                  const startAngle = -totalSwipe / 2 - 0.4;
                   swingRot = (startAngle + (totalSwipe * ease));
-                  const thrust = Math.sin(progress * Math.PI) * 12;
+                  const thrust = Math.sin(progress * Math.PI) * 14;
                   ctx.translate(thrust, 0);
+                  if (frame > 1 && frame < maxFrame - 1) {
+                      ctx.save();
+                      ctx.rotate(swingRot);
+                      ctx.beginPath();
+                      ctx.arc(-10, 0, 45, -0.5, 0.5, false);
+                      ctx.arc(-10, 0, 30, 0.5, -0.5, true);
+                      ctx.fillStyle = chargeTimer.current > 30 ? 'rgba(255, 100, 0, 0.6)' : 'rgba(255, 255, 255, 0.5)';
+                      ctx.fill();
+                      ctx.restore();
+                  }
               }
           } else {
               const breathe = Math.sin(Date.now() / 400) * 0.08;
@@ -361,10 +378,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           ctx.fillStyle = '#451a03'; ctx.fillRect(-2, -4, 4, 8); 
           ctx.fillStyle = '#d97706'; ctx.beginPath(); ctx.arc(0, -5, 3.5, 0, Math.PI*2); ctx.fill(); 
           ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(6, 6); ctx.lineTo(6, 8); ctx.lineTo(-6, 8); ctx.lineTo(-6, 6); ctx.lineTo(0, 4); ctx.fill();
-          const grad = ctx.createLinearGradient(0, 0, 40, 0);
+          const grad = ctx.createLinearGradient(0, 0, 45, 0);
           if (chargeTimer.current > 30) { grad.addColorStop(0, '#fef3c7'); grad.addColorStop(0.5, '#fbbf24'); grad.addColorStop(1, '#b45309'); }
           else { grad.addColorStop(0, '#e2e8f0'); grad.addColorStop(0.5, '#94a3b8'); grad.addColorStop(1, '#cbd5e1'); }
-          ctx.fillStyle = grad; ctx.beginPath(); ctx.moveTo(2, 3); ctx.lineTo(36, 3); ctx.lineTo(42, 0); ctx.lineTo(36, -3); ctx.lineTo(2, -3); ctx.fill();
+          ctx.fillStyle = grad; ctx.beginPath(); ctx.moveTo(2, 4); ctx.lineTo(38, 4); ctx.lineTo(46, 0); ctx.lineTo(38, -4); ctx.lineTo(2, -4); ctx.fill();
+          ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.moveTo(4, 1); ctx.lineTo(32, 1); ctx.lineTo(32, -1); ctx.lineTo(4, -1); ctx.fill();
       } else {
           if (isAttacking) {
               const maxFrame = 5;
