@@ -1,11 +1,10 @@
-
-import { CharacterType, LevelDefinition, TileType } from './types';
+// constants.ts
+import { CharacterType, LevelDefinition } from './types';
 
 export const TILE_SIZE = 48;
 export const LEVEL_MAP_WIDTH = 30;
 export const LEVEL_MAP_HEIGHT = 20;
 
-// Physics Config
 export const PHYSICS = {
   [CharacterType.ONYX]: {
     moveSpeed: 0.35,
@@ -31,9 +30,6 @@ export const PHYSICS = {
   }
 };
 
-// --- MAP LAYOUTS ---
-
-// Layout A: The City/Castle Layout (More walls, rooms)
 const LAYOUT_A = [
   [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
   [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
@@ -57,7 +53,6 @@ const LAYOUT_A = [
   [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 ];
 
-// Layout B: The Organic/Wild Layout (More open, scattered walls)
 const LAYOUT_B = [
   [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
   [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
@@ -87,15 +82,16 @@ export const GAME_LEVELS: LevelDefinition[] = [
     mapLayout: LAYOUT_A,
     enemySpawnRate: 1.0,
     enemyTypes: ['CHASER'],
+    playerSpawn: { x: 2, y: 2 },
     theme: {
       name: "CATACOMBS OF DALI",
-      floorColor: '#1e293b', // Dark Slate
+      floorColor: '#1e293b',
       wallColor: '#334155',
       wallTopColor: '#0f172a',
       voidColor: '#020617',
-      ambientColor: '#1e3a8a', // Blue/Gold Tint
+      ambientColor: '#1e3a8a',
       gemName: "The Ancestor's Spark",
-      gemColor: '#FFD700' // Gold
+      gemColor: '#FFD700'
     }
   },
   {
@@ -103,15 +99,16 @@ export const GAME_LEVELS: LevelDefinition[] = [
     mapLayout: LAYOUT_B,
     enemySpawnRate: 1.2,
     enemyTypes: ['CHASER', 'SLIMER', 'TURRET'],
+    playerSpawn: { x: 2, y: 16 }, // Start Bottom Left
     theme: {
       name: "ASHPERIA FOREST",
-      floorColor: '#14532d', // Dark Green
-      wallColor: '#365314', // Mossy
+      floorColor: '#14532d',
+      wallColor: '#365314',
       wallTopColor: '#052e16',
-      voidColor: '#020617', // Deep pit
-      ambientColor: '#166534', // Green Tint
+      voidColor: '#020617',
+      ambientColor: '#166534',
       gemName: "The Unopenable Lock",
-      gemColor: '#4ade80' // Green
+      gemColor: '#4ade80'
     }
   },
   {
@@ -119,15 +116,16 @@ export const GAME_LEVELS: LevelDefinition[] = [
     mapLayout: LAYOUT_B,
     enemySpawnRate: 1.3,
     enemyTypes: ['DASHER', 'SLIMER'],
+    playerSpawn: { x: 15, y: 10 }, // Start Middle
     theme: {
       name: "THE RIVERLANDS",
-      floorColor: '#155e75', // Cyan/Blue
+      floorColor: '#155e75',
       wallColor: '#164e63',
       wallTopColor: '#083344',
-      voidColor: '#0891b2', // Water Void
-      ambientColor: '#06b6d4', // Aqua Tint
+      voidColor: '#0891b2',
+      ambientColor: '#06b6d4',
       gemName: "The Tide-Caller",
-      gemColor: '#22d3ee' // Cyan
+      gemColor: '#22d3ee'
     }
   },
   {
@@ -135,15 +133,16 @@ export const GAME_LEVELS: LevelDefinition[] = [
     mapLayout: LAYOUT_A,
     enemySpawnRate: 1.5,
     enemyTypes: ['TANK', 'CHASER'],
+    playerSpawn: { x: 27, y: 2 }, // Start Top Right
     theme: {
       name: "DIAMOND CASTLE",
-      floorColor: '#475569', // Stone
-      wallColor: '#e2e8f0', // White/Diamond Walls
+      floorColor: '#475569',
+      wallColor: '#e2e8f0',
       wallTopColor: '#94a3b8',
       voidColor: '#0f172a',
-      ambientColor: '#f8fafc', // Bright/White Tint
+      ambientColor: '#f8fafc',
       gemName: "The Wind-Razor",
-      gemColor: '#FFFFFF' // White
+      gemColor: '#FFFFFF'
     }
   },
   {
@@ -151,15 +150,16 @@ export const GAME_LEVELS: LevelDefinition[] = [
     mapLayout: LAYOUT_B,
     enemySpawnRate: 1.6,
     enemyTypes: ['TANK', 'TURRET'],
+    playerSpawn: { x: 15, y: 15 }, // Start Bottom Center
     theme: {
       name: "THE MOUNTAIN",
-      floorColor: '#451a03', // Brown Dirt
-      wallColor: '#78350f', // Red Rock
+      floorColor: '#451a03',
+      wallColor: '#78350f',
       wallTopColor: '#451a03',
-      voidColor: '#7f1d1d', // Lava Pit
-      ambientColor: '#b91c1c', // Red Tint
+      voidColor: '#7f1d1d',
+      ambientColor: '#b91c1c',
       gemName: "The Sun-Eater",
-      gemColor: '#ef4444' // Red
+      gemColor: '#ef4444'
     }
   },
   {
@@ -167,15 +167,16 @@ export const GAME_LEVELS: LevelDefinition[] = [
     mapLayout: LAYOUT_B,
     enemySpawnRate: 1.4,
     enemyTypes: ['DASHER', 'CHASER'],
+    playerSpawn: { x: 5, y: 5 }, // Random
     theme: {
       name: "THE DEEP SANDS",
-      floorColor: '#d97706', // Orange Sand
-      wallColor: '#b45309', // Sandstone
+      floorColor: '#d97706',
+      wallColor: '#b45309',
       wallTopColor: '#92400e',
-      voidColor: '#451a03', // Dark Pit
-      ambientColor: '#f59e0b', // Orange Tint
+      voidColor: '#451a03',
+      ambientColor: '#f59e0b',
       gemName: "The Chronos-Dial",
-      gemColor: '#fcd34d' // Gold
+      gemColor: '#fcd34d'
     }
   },
   {
@@ -183,15 +184,16 @@ export const GAME_LEVELS: LevelDefinition[] = [
     mapLayout: LAYOUT_B,
     enemySpawnRate: 1.8,
     enemyTypes: ['SLIMER', 'TANK', 'TURRET'],
+    playerSpawn: { x: 2, y: 2 },
     theme: {
       name: "THE WASTELAND",
-      floorColor: '#262626', // Grey Ash
+      floorColor: '#262626',
       wallColor: '#404040',
       wallTopColor: '#171717',
       voidColor: '#000000',
-      ambientColor: '#525252', // Grey Tint
+      ambientColor: '#525252',
       gemName: "The Terra-Fist",
-      gemColor: '#a8a29e' // Stone
+      gemColor: '#a8a29e'
     }
   },
   {
@@ -199,31 +201,35 @@ export const GAME_LEVELS: LevelDefinition[] = [
     mapLayout: LAYOUT_A,
     enemySpawnRate: 2.0,
     enemyTypes: ['TANK', 'DASHER', 'TURRET'],
+    playerSpawn: { x: 15, y: 17 }, // Bottom Entrance
     theme: {
       name: "GOLDEN CASTLE",
-      floorColor: '#854d0e', // Gold Floor
-      wallColor: '#ca8a04', // Gold Wall
+      floorColor: '#854d0e',
+      wallColor: '#ca8a04',
       wallTopColor: '#a16207',
       voidColor: '#451a03',
-      ambientColor: '#facc15', // Yellow Tint
+      ambientColor: '#facc15',
       gemName: "The Wisdom Index",
-      gemColor: '#22c55e' // Green/Wisdom
+      gemColor: '#22c55e'
     }
   },
   {
     id: 9,
-    mapLayout: LAYOUT_A, // Sky Castle
+    mapLayout: LAYOUT_A,
     enemySpawnRate: 2.5,
     enemyTypes: ['TANK', 'DASHER', 'TURRET', 'CHASER'],
+    playerSpawn: { x: 2, y: 17 },
     theme: {
       name: "SKY CASTLE",
-      floorColor: '#e2e8f0', // Clouds/White
-      wallColor: '#94a3b8', // Silver
+      floorColor: '#e2e8f0',
+      wallColor: '#94a3b8',
       wallTopColor: '#fff',
-      voidColor: '#bae6fd', // Sky Void
-      ambientColor: '#e0f2fe', // Sky Tint
+      voidColor: '#bae6fd',
+      ambientColor: '#e0f2fe',
       gemName: "SAIPHER PRIME",
-      gemColor: '#c084fc' // Purple/Rainbow
+      gemColor: '#c084fc'
     }
   }
 ];
+
+export const LEVELS = GAME_LEVELS; // Compatibility export
