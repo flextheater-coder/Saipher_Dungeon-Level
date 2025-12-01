@@ -287,49 +287,91 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     ctx.restore();
   };
 
-  const drawWeapon = (ctx: CanvasRenderingContext2D, char: CharacterType, x: number, y: number, facing: Direction, isAttacking: boolean, frame: number) => {
+ const drawWeapon = (ctx: CanvasRenderingContext2D, char: CharacterType, x: number, y: number, facing: Direction, isAttacking: boolean, frame: number) => {
       ctx.save();
       const cx = x + 16;
       const cy = y + 16;
       ctx.translate(cx, cy);
+
       let handX = 0; let handY = 0; let baseRot = 0;
+
       if (facing === Direction.LEFT) { ctx.scale(-1, 1); facing = Direction.RIGHT; }
+
       if (facing === Direction.RIGHT) { handX = 6; handY = 8; baseRot = 0; }
       else if (facing === Direction.DOWN) { handX = -6; handY = 6; baseRot = Math.PI / 2; }
       else if (facing === Direction.UP) { handX = 6; handY = -4; baseRot = -Math.PI / 2; }
+
       ctx.translate(handX, handY);
       ctx.rotate(baseRot);
 
       if (char === CharacterType.ONYX) {
           let swingRot = 0;
           ctx.translate(0, -2); 
+
           if (isAttacking) {
               if (attackType.current === 'CHARGED') {
-                  const progress = 1 - (frame / 15); swingRot = progress * Math.PI * 4; 
+                  const progress = 1 - (frame / 15); 
+                  swingRot = progress * Math.PI * 4; // Spin attack
               } else {
                   const charConfig = PHYSICS[char];
                   const maxFrame = charConfig.attackDuration;
                   const progress = 1 - (frame / maxFrame);
-                  const ease = 1 - Math.pow(1 - progress, 4); 
-                  const totalSwipe = 2.8; 
-                  const startAngle = -totalSwipe / 2 - 0.2;
+                  const ease = 1 - Math.pow(1 - progress, 4); // Quartic ease out
+                  
+                  // WIDER SWING LOGIC
+                  const totalSwipe = 3.8; // Increased from 2.8 for wider arc
+                  const startAngle = -totalSwipe / 2 - 0.4;
                   swingRot = (startAngle + (totalSwipe * ease));
-                  const thrust = Math.sin(progress * Math.PI) * 12;
+                  
+                  const thrust = Math.sin(progress * Math.PI) * 14;
                   ctx.translate(thrust, 0);
+
+                  // --- DRAW SWOOSH TRAIL ---
+                  if (frame > 1 && frame < maxFrame - 1) {
+                      ctx.save();
+                      ctx.rotate(swingRot); // Match blade rotation
+                      ctx.beginPath();
+                      // Draw a crescent shape behind the blade
+                      ctx.arc(-10, 0, 45, -0.5, 0.5, false);
+                      ctx.arc(-10, 0, 30, 0.5, -0.5, true);
+                      ctx.fillStyle = chargeTimer.current > 30 ? 'rgba(255, 100, 0, 0.6)' : 'rgba(255, 255, 255, 0.5)';
+                      ctx.fill();
+                      ctx.restore();
+                  }
               }
           } else {
+              // Idle breathing
               const breathe = Math.sin(Date.now() / 400) * 0.08;
               swingRot = Math.PI / 3 + breathe;
           }
+          
           ctx.rotate(swingRot);
+
+          // Render Sword Hilt
           ctx.fillStyle = '#451a03'; ctx.fillRect(-2, -4, 4, 8); 
           ctx.fillStyle = '#d97706'; ctx.beginPath(); ctx.arc(0, -5, 3.5, 0, Math.PI*2); ctx.fill(); 
-          ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(6, 6); ctx.lineTo(6, 8); ctx.lineTo(-6, 8); ctx.lineTo(-6, 6); ctx.lineTo(0, 4); ctx.fill();
-          const grad = ctx.createLinearGradient(0, 0, 40, 0);
-          if (chargeTimer.current > 30) { grad.addColorStop(0, '#fef3c7'); grad.addColorStop(0.5, '#fbbf24'); grad.addColorStop(1, '#b45309'); }
-          else { grad.addColorStop(0, '#e2e8f0'); grad.addColorStop(0.5, '#94a3b8'); grad.addColorStop(1, '#cbd5e1'); }
-          ctx.fillStyle = grad; ctx.beginPath(); ctx.moveTo(2, 3); ctx.lineTo(36, 3); ctx.lineTo(42, 0); ctx.lineTo(36, -3); ctx.lineTo(2, -3); ctx.fill();
+          
+          // Render Crossguard
+          ctx.fillStyle = '#f59e0b'; 
+          ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(6, 6); ctx.lineTo(6, 8); ctx.lineTo(-6, 8); ctx.lineTo(-6, 6); ctx.lineTo(0, 4); ctx.fill();
+          
+          // Render Blade
+          const grad = ctx.createLinearGradient(0, 0, 45, 0); // Longer blade gradient
+          if (chargeTimer.current > 30) { 
+              grad.addColorStop(0, '#fef3c7'); grad.addColorStop(0.5, '#fbbf24'); grad.addColorStop(1, '#b45309'); 
+          } else { 
+              grad.addColorStop(0, '#e2e8f0'); grad.addColorStop(0.5, '#94a3b8'); grad.addColorStop(1, '#cbd5e1'); 
+          }
+          ctx.fillStyle = grad; 
+          // Thicker, longer blade geometry
+          ctx.beginPath(); ctx.moveTo(2, 4); ctx.lineTo(38, 4); ctx.lineTo(46, 0); ctx.lineTo(38, -4); ctx.lineTo(2, -4); ctx.fill();
+          
+          // Fuller (blood groove)
+          ctx.fillStyle = 'rgba(0,0,0,0.2)';
+          ctx.beginPath(); ctx.moveTo(4, 1); ctx.lineTo(32, 1); ctx.lineTo(32, -1); ctx.lineTo(4, -1); ctx.fill();
+
       } else {
+          // ZAINAB STAFF (Existing logic preserved but smoothed)
           if (isAttacking) {
               const maxFrame = 5;
               const progress = 1 - (frame / maxFrame);
@@ -339,10 +381,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
              const bob = Math.sin(Date.now() / 400) * 3;
              ctx.translate(0, bob); ctx.rotate(-Math.PI / 6); 
           }
+          
+          // Staff Shaft
           ctx.fillStyle = '#3f2c22'; ctx.fillRect(-4, -2, 42, 4); 
           ctx.fillStyle = '#fbbf24'; ctx.fillRect(4, -2.5, 3, 5); ctx.fillRect(24, -2.5, 3, 5); 
+          
           ctx.translate(38, 0);
+          // Staff Head
           ctx.fillStyle = '#d97706'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(5, -10, 15, -8, 12, -2); ctx.lineTo(8, 0); ctx.lineTo(12, 2); ctx.bezierCurveTo(15, 8, 5, 10, 0, 0); ctx.fill();
+
+          // Magic Orb
           const isFiringFrame = isAttacking && frame > 2;
           const coreColor = isFiringFrame ? '#FFFFFF' : '#6366f1';
           const glowGrad = ctx.createRadialGradient(6, 0, 2, 6, 0, isFiringFrame ? 25 : 15);
