@@ -1,11 +1,14 @@
-// ... existing enums ...
+import { type ClassAttributes, type HTMLAttributes } from "react";
+
+// ... Keep existing enums (CharacterType, TileType, Direction, Vector2, etc.) ...
+
 export enum CharacterType {
   ONYX = 'ONYX',
   ZAINAB = 'ZAINAB'
 }
 
 export enum TileType {
-  EMPTY = 0, // Void/Pit
+  EMPTY = 0, 
   FLOOR = 1,
   WALL = 2,
   DOOR = 3,
@@ -19,7 +22,8 @@ export enum GameStatus {
   PLAYING = 'PLAYING',
   PAUSED = 'PAUSED',
   GAME_OVER = 'GAME_OVER',
-  VICTORY = 'VICTORY'
+  VICTORY = 'VICTORY',
+  SAIPHER_PRIME = 'SAIPHER_PRIME' // New End State
 }
 
 export enum Direction {
@@ -28,8 +32,6 @@ export enum Direction {
   LEFT = 'LEFT',
   RIGHT = 'RIGHT'
 }
-
-// ... existing interfaces ...
 
 export interface Vector2 {
   x: number;
@@ -58,6 +60,8 @@ export interface Particle extends Entity {
   life: number;
   maxLife: number;
   color: string;
+  type?: 'DEFAULT' | 'SPARK' | 'SHOCKWAVE' | 'CHARGE' | 'SLASH' | 'RING';
+  rotation?: number;
 }
 
 export interface Pickup extends Entity {
@@ -76,29 +80,25 @@ export interface Enemy extends Entity {
   hitFlash?: number;
 }
 
-// NEW INTERFACES FOR LEVEL SYSTEM
-export interface EnemySpawn {
-  type: 'CHASER' | 'TURRET' | 'SLIMER' | 'DASHER' | 'TANK';
-  x: number; // Grid coordinates
-  y: number;
-}
+// --- NEW LEVEL TYPES ---
 
 export interface LevelTheme {
+  name: string;
   floorColor: string;
-  floorAltColor: string;
   wallColor: string;
   wallTopColor: string;
-  pitColor: string;
-  ambientColor: string; // For lighting overlay
-  vignetteIntensity: number;
-  name: string;
+  voidColor: string; // The pit color
+  ambientColor: string; // Lighting overlay
   gemName: string;
   gemColor: string;
 }
 
-export interface LevelConfig {
+export interface LevelDefinition {
   id: number;
-  grid: number[][];
-  enemies: EnemySpawn[];
+  mapLayout: number[][]; // Grid reference
   theme: LevelTheme;
+  enemySpawnRate: number; // Multiplier for difficulty
+  enemyTypes: string[]; // Allowed enemies
 }
+
+// ... Keep existing interface exports if not modified ...
