@@ -1,4 +1,4 @@
-
+// ... existing enums ...
 export enum CharacterType {
   ONYX = 'ONYX',
   ZAINAB = 'ZAINAB'
@@ -28,6 +28,8 @@ export enum Direction {
   LEFT = 'LEFT',
   RIGHT = 'RIGHT'
 }
+
+// ... existing interfaces ...
 
 export interface Vector2 {
   x: number;
@@ -61,7 +63,7 @@ export interface Particle extends Entity {
 export interface Pickup extends Entity {
   type: 'GEM';
   value: number;
-  life: number; // Despawn timer
+  life: number;
   collected: boolean;
 }
 
@@ -71,5 +73,32 @@ export interface Enemy extends Entity {
   agroRange: number;
   type: 'CHASER' | 'TURRET' | 'SLIMER' | 'DASHER' | 'TANK';
   attackCooldown: number;
-  hitFlash?: number; // Number of frames to flash white
+  hitFlash?: number;
+}
+
+// NEW INTERFACES FOR LEVEL SYSTEM
+export interface EnemySpawn {
+  type: 'CHASER' | 'TURRET' | 'SLIMER' | 'DASHER' | 'TANK';
+  x: number; // Grid coordinates
+  y: number;
+}
+
+export interface LevelTheme {
+  floorColor: string;
+  floorAltColor: string;
+  wallColor: string;
+  wallTopColor: string;
+  pitColor: string;
+  ambientColor: string; // For lighting overlay
+  vignetteIntensity: number;
+  name: string;
+  gemName: string;
+  gemColor: string;
+}
+
+export interface LevelConfig {
+  id: number;
+  grid: number[][];
+  enemies: EnemySpawn[];
+  theme: LevelTheme;
 }
