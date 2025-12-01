@@ -1,6 +1,4 @@
-import { type ClassAttributes, type HTMLAttributes } from "react";
-
-// ... Keep existing enums (CharacterType, TileType, Direction, Vector2, etc.) ...
+// types.ts
 
 export enum CharacterType {
   ONYX = 'ONYX',
@@ -23,7 +21,7 @@ export enum GameStatus {
   PAUSED = 'PAUSED',
   GAME_OVER = 'GAME_OVER',
   VICTORY = 'VICTORY',
-  SAIPHER_PRIME = 'SAIPHER_PRIME' // New End State
+  SAIPHER_PRIME = 'SAIPHER_PRIME'
 }
 
 export enum Direction {
@@ -80,25 +78,22 @@ export interface Enemy extends Entity {
   hitFlash?: number;
 }
 
-// --- NEW LEVEL TYPES ---
-
 export interface LevelTheme {
   name: string;
   floorColor: string;
   wallColor: string;
   wallTopColor: string;
-  voidColor: string; // The pit color
-  ambientColor: string; // Lighting overlay
+  voidColor: string;
+  ambientColor: string;
   gemName: string;
   gemColor: string;
 }
 
 export interface LevelDefinition {
   id: number;
-  mapLayout: number[][]; // Grid reference
+  mapLayout: number[][];
   theme: LevelTheme;
-  enemySpawnRate: number; // Multiplier for difficulty
-  enemyTypes: string[]; // Allowed enemies
+  enemySpawnRate: number;
+  enemyTypes: string[];
+  playerSpawn: { x: number, y: number }; // NEW: Custom spawn point
 }
-
-// ... Keep existing interface exports if not modified ...
