@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { CharacterType, GameStatus } from '../types';
 import { PHYSICS, TILE_SIZE, LEVEL_MAP_WIDTH, LEVEL_MAP_HEIGHT } from '../constants';
-import { Skull, Trophy, Pause, Diamond, Heart, Sword, Wind, Repeat, Play } from 'lucide-react';
+import { Skull, Trophy, Pause, Diamond, Heart, Sword, Wind, Repeat, Play, Home, ArrowRight } from 'lucide-react';
 
 interface UIOverlayProps {
   gameStatus: GameStatus;
@@ -9,6 +9,9 @@ interface UIOverlayProps {
   resetGame: () => void;
   playerSpeedMod: number;
   setPlayerSpeedMod: (speed: number) => void;
+  onNextLevel: () => void;
+  onRetryLevel: () => void;
+  currentLevel: number;
 }
 
 const Joystick = () => {
@@ -145,7 +148,6 @@ const MinimapCanvas = ({ data }: { data: any }) => {
         // Draw grid
         for (let y = 0; y < LEVEL_MAP_HEIGHT; y++) {
             for (let x = 0; x < LEVEL_MAP_WIDTH; x++) {
-                // Only draw discovered tiles (fog = true means discovered in GameCanvas logic)
                 if (fog[y][x]) {
                      const tile = grid[y][x];
                      if (tile === 0) ctx.fillStyle = '#020617'; // Pit
@@ -153,7 +155,7 @@ const MinimapCanvas = ({ data }: { data: any }) => {
                      else if (tile === 9) ctx.fillStyle = '#00FFFF'; // Goal
                      else ctx.fillStyle = '#334155'; // Floor
                      
-                     ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+                     ctx.fillRect(x * cellW, y * cellH, cellW + 0.5, cellH + 0.5);
                 }
             }
         }
@@ -163,15 +165,24 @@ const MinimapCanvas = ({ data }: { data: any }) => {
         const py = (playerPos.y / (LEVEL_MAP_HEIGHT * TILE_SIZE)) * ch;
         ctx.fillStyle = '#fbbf24';
         ctx.beginPath();
-        ctx.arc(px, py, 2.5, 0, Math.PI*2);
+        ctx.arc(px, py, 3, 0, Math.PI*2);
         ctx.fill();
 
     }, [data]);
 
-    return <canvas ref={canvasRef} width={120} height={80} className="w-full h-full opacity-80" />;
+    return <canvas ref={canvasRef} width={150} height={100} className="w-full h-full opacity-90" />;
 };
 
-export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus, resetGame, playerSpeedMod, setPlayerSpeedMod }) => {
+export const UIOverlay: React.FC<UIOverlayProps> = ({ 
+    gameStatus, 
+    setGameStatus, 
+    resetGame, 
+    playerSpeedMod, 
+    setPlayerSpeedMod,
+    onNextLevel,
+    onRetryLevel,
+    currentLevel
+}) => {
   const [hudState, setHudState] = useState<{char: CharacterType, hp: number, maxHp: number, score: number}>({
       char: CharacterType.ONYX,
       hp: 10,
@@ -201,22 +212,44 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus,
   const renderHearts = () => {
       const hearts = [];
       const maxHearts = Math.max(5, Math.ceil(hudState.maxHp / 2));
-      
+      const isLowHealth = hudState.hp <= hudState.maxHp * 0.3;
+
       for (let i = 0; i < maxHearts; i++) {
-          // Each heart represents 2 HP
-          const hpForThisHeart = Math.max(0, Math.min(2, hudState.hp - (i * 2)));
-          
+          const heartValue = (i + 1) * 2;
+          let fillState = 'EMPTY'; 
+          if (hudState.hp >= heartValue) fillState = 'FULL';
+          else if (hudState.hp >= heartValue - 1) fillState = 'HALF';
+
           hearts.push(
-              <div key={i} className="relative w-6 h-6">
-                {/* Background (Empty) */}
-                <Heart className="w-6 h-6 text-slate-700 absolute inset-0" />
+              <div key={i} className={`relative w-6 h-6 ${isLowHealth && 'animate-pulse'}`}>
+                <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="#450a0a" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    className="absolute inset-0 w-full h-full"
+                >
+                    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+                    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" fill="#1f2937" stroke="none" opacity="0.5"/>
+                </svg>
                 
-                {/* Full or Partial Fill */}
-                {hpForThisHeart > 0 && (
-                    <div className="absolute inset-0 overflow-hidden" style={{ width: hpForThisHeart === 2 ? '100%' : '50%' }}>
-                         <Heart className="w-6 h-6 text-red-500 fill-red-500" />
-                    </div>
-                )}
+                <div className="absolute inset-0 overflow-hidden" style={{ width: fillState === 'FULL' ? '100%' : fillState === 'HALF' ? '50%' : '0%' }}>
+                     <svg 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        viewBox="0 0 24 24" 
+                        fill="#ef4444" 
+                        stroke="#ef4444" 
+                        strokeWidth="2" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        className="w-full h-full drop-shadow-md"
+                    >
+                        <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+                    </svg>
+                </div>
               </div>
           );
       }
@@ -224,17 +257,16 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus,
   };
 
   const togglePause = () => {
-       window.dispatchEvent(new CustomEvent('game-input', {
-            detail: { type: 'button', data: { name: 'PAUSE', state: 'down' } }
-       }));
+      if (gameStatus === GameStatus.PLAYING) setGameStatus(GameStatus.PAUSED);
+      else if (gameStatus === GameStatus.PAUSED) setGameStatus(GameStatus.PLAYING);
   };
 
   if (gameStatus === GameStatus.MENU) {
       return (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-50 text-white font-sans">
-            <div className="text-center space-y-6 max-w-lg p-8 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl">
-                <h1 className="text-4xl md:text-6xl font-black text-yellow-400 tracking-widest drop-shadow-lg">DUNGEON<br/>DUALITY</h1>
-                <p className="text-slate-300 text-lg">Master two forms to conquer the depths.</p>
+            <div className="text-center space-y-6 max-w-lg p-8 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl animate-in zoom-in-95 duration-300">
+                <h1 className="text-5xl font-black text-yellow-400 tracking-widest drop-shadow-lg">SAIPHER</h1>
+                <p className="text-slate-300 text-lg">Switch forms. Conquer the depths.</p>
                 
                 <div className="grid grid-cols-2 gap-4 text-left bg-slate-800/50 p-4 rounded-lg border border-slate-700">
                     <div className="space-y-2">
@@ -247,34 +279,18 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus,
                     </div>
                 </div>
 
-                <div className="flex flex-wrap justify-center gap-4 text-sm text-slate-400">
-                     <div className="bg-slate-800 px-3 py-1 rounded border border-slate-700">WASD / Arrows <span className="text-slate-500">Move</span></div>
-                     <div className="bg-slate-800 px-3 py-1 rounded border border-slate-700">SPACE <span className="text-slate-500">Attack</span></div>
-                     <div className="bg-slate-800 px-3 py-1 rounded border border-slate-700">Q <span className="text-slate-500">Swap</span></div>
-                     <div className="bg-slate-800 px-3 py-1 rounded border border-slate-700">SHIFT <span className="text-slate-500">Dodge</span></div>
-                </div>
-
-                 <div className="flex flex-col items-center gap-2 pt-4 border-t border-slate-800">
-                   <label className="flex items-center gap-4 cursor-pointer select-none group">
-                      <span className="text-sm font-bold text-slate-400 group-hover:text-white transition-colors">GAME SPEED</span>
-                      <input 
-                        type="range" 
-                        min="0.5" 
-                        max="1.5" 
-                        step="0.1" 
-                        value={playerSpeedMod} 
-                        onChange={(e) => setPlayerSpeedMod(parseFloat(e.target.value))}
-                        className="w-32 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
-                      />
-                      <span className="w-12 text-right font-mono text-yellow-400">{Math.round(playerSpeedMod * 100)}%</span>
-                   </label>
+                <div className="flex flex-wrap justify-center gap-4 text-xs text-slate-500 font-mono">
+                     <span>WASD: Move</span>
+                     <span>SPACE: Attack</span>
+                     <span>Q: Swap</span>
+                     <span>SHIFT: Dodge</span>
                 </div>
 
                 <button 
                     onClick={() => setGameStatus(GameStatus.PLAYING)}
                     className="w-full py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-black rounded-lg text-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3 shadow-lg shadow-yellow-500/20"
                 >
-                    <Play size={28} className="fill-black" /> ENTER DUNGEON
+                    <Play size={28} className="fill-black" /> START GAME
                 </button>
             </div>
         </div>
@@ -294,11 +310,12 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus,
                     <p className="text-4xl font-mono text-yellow-400">{hudState.score}</p>
                 </div>
                 <button 
-                    onClick={resetGame}
+                    onClick={onRetryLevel}
                     className="w-full py-3 bg-slate-700 hover:bg-slate-600 border border-slate-500 text-white font-bold rounded-lg text-lg transition-all flex items-center justify-center gap-2"
                 >
                     <Repeat size={20} /> TRY AGAIN
                 </button>
+                <button onClick={resetGame} className="text-sm text-slate-500 hover:text-white">MAIN MENU</button>
             </div>
         </div>
       );
@@ -312,17 +329,18 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus,
                     <Trophy className="w-16 h-16 text-yellow-400" />
                 </div>
                 <h2 className="text-5xl font-black text-yellow-400 tracking-tighter">VICTORY</h2>
-                <p className="text-slate-300">You have conquered the dungeon!</p>
+                <p className="text-slate-300">Level {currentLevel} Complete!</p>
                  <div className="bg-slate-800/50 p-4 rounded-lg">
-                    <p className="text-slate-400 text-sm uppercase tracking-widest mb-1">Final Score</p>
+                    <p className="text-slate-400 text-sm uppercase tracking-widest mb-1">Total Gems</p>
                     <p className="text-4xl font-mono text-yellow-400">{hudState.score}</p>
                 </div>
                 <button 
-                    onClick={resetGame}
+                    onClick={onNextLevel}
                     className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg text-lg transition-all flex items-center justify-center gap-2"
                 >
-                    <Repeat size={20} /> PLAY AGAIN
+                    <ArrowRight size={20} /> NEXT LEVEL
                 </button>
+                <button onClick={resetGame} className="text-sm text-slate-500 hover:text-white">MAIN MENU</button>
             </div>
         </div>
       );
@@ -334,11 +352,11 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus,
         <div className="flex justify-between items-start pointer-events-auto w-full">
             <div className="flex flex-col gap-2">
                 {/* Health Bar */}
-                <div className="flex items-center gap-1 p-2 bg-slate-900/80 rounded-lg backdrop-blur border border-slate-700/50 shadow-lg">
+                <div className="flex items-center gap-1 p-2 bg-slate-900/90 rounded-lg backdrop-blur border border-slate-700/50 shadow-lg">
                     {renderHearts()}
                 </div>
                 {/* Active Character */}
-                <div className="flex items-center gap-2 p-2 bg-slate-900/80 rounded-lg backdrop-blur border border-slate-700/50 text-white w-fit shadow-lg transition-colors duration-300"
+                <div className="flex items-center gap-2 p-2 bg-slate-900/90 rounded-lg backdrop-blur border border-slate-700/50 text-white w-fit shadow-lg transition-colors duration-300"
                      style={{ borderColor: hudState.char === CharacterType.ONYX ? '#ef4444' : '#eab308' }}>
                      <div className={`w-2 h-2 rounded-full animate-pulse ${hudState.char === CharacterType.ONYX ? 'bg-red-500' : 'bg-yellow-400'}`} />
                      <span className="font-bold font-mono text-sm">{hudState.char}</span>
@@ -348,7 +366,7 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus,
             <div className="flex flex-col items-end gap-2">
                 <div className="flex items-center gap-4">
                     {/* Score */}
-                    <div className="flex items-center gap-2 p-2 px-3 bg-slate-900/80 rounded-lg backdrop-blur border border-slate-700/50 text-yellow-400 shadow-lg">
+                    <div className="flex items-center gap-2 p-2 px-3 bg-slate-900/90 rounded-lg backdrop-blur border border-slate-700/50 text-yellow-400 shadow-lg">
                         <Diamond size={16} className="fill-yellow-400" />
                         <span className="font-bold font-mono text-xl">{hudState.score.toString().padStart(5, '0')}</span>
                     </div>
@@ -370,15 +388,46 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus,
 
         {/* PAUSE OVERLAY */}
         {gameStatus === GameStatus.PAUSED && (
-             <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-[2px] pointer-events-auto animate-in fade-in">
-                <div className="text-white text-center">
-                    <h2 className="text-4xl font-bold mb-6 tracking-widest">PAUSED</h2>
-                    <button 
-                        onClick={() => setGameStatus(GameStatus.PLAYING)}
-                        className="px-8 py-3 bg-yellow-500 text-black font-bold rounded-lg hover:bg-yellow-400 transition-transform hover:scale-105"
-                    >
-                        RESUME
-                    </button>
+             <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm pointer-events-auto animate-in fade-in z-50">
+                <div className="bg-slate-900 border border-slate-700 p-8 rounded-2xl shadow-2xl w-full max-w-sm text-center">
+                    <h2 className="text-4xl font-black mb-2 tracking-widest text-yellow-400">PAUSED</h2>
+                    
+                    <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 mb-8 mt-6">
+                        <label className="flex flex-col gap-3 cursor-pointer group">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-bold text-slate-300 flex items-center gap-2">
+                                    <Wind size={16} /> GAME SPEED
+                                </span>
+                                <span className="font-mono font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded text-sm">
+                                    {Math.round(playerSpeedMod * 100)}%
+                                </span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="0.5" 
+                                max="1.5" 
+                                step="0.05" 
+                                value={playerSpeedMod} 
+                                onChange={(e) => setPlayerSpeedMod(parseFloat(e.target.value))}
+                                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-yellow-500 hover:accent-yellow-400"
+                            />
+                        </label>
+                    </div>
+
+                    <div className="space-y-3">
+                        <button 
+                            onClick={() => setGameStatus(GameStatus.PLAYING)}
+                            className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-lg text-lg transition-transform active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-yellow-500/20"
+                        >
+                            <Play size={20} className="fill-black" /> RESUME
+                        </button>
+                        <button 
+                             onClick={() => { if(confirm("Quit to Main Menu?")) resetGame(); }}
+                             className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                        >
+                            <Home size={18} /> QUIT
+                        </button>
+                    </div>
                 </div>
              </div>
         )}
@@ -396,11 +445,6 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({ gameStatus, setGameStatus,
                  </div>
                  <ActionButton name="ATTACK" icon={Sword} color="bg-red-600 active:bg-red-500 scale-110" />
              </div>
-        </div>
-        
-        {/* Desktop Hints */}
-        <div className="hidden md:block text-white/30 text-xs font-mono text-center pb-1">
-            WASD Move • SPACE Attack • Q Swap • SHIFT Dodge
         </div>
     </div>
   );

@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { CharacterType, TileType, GameStatus, Projectile, Particle, Enemy, Vector2, Direction, Pickup } from '../types';
-import { PHYSICS, TILE_SIZE, LEVEL_MAP_WIDTH, LEVEL_MAP_HEIGHT, LEVEL_DATA } from '../constants';
+import { PHYSICS, TILE_SIZE, LEVEL_MAP_WIDTH, LEVEL_MAP_HEIGHT, LEVELS } from '../constants';
 
 interface GameCanvasProps {
   gameStatus: GameStatus;
   setGameStatus: (status: GameStatus | ((prev: GameStatus) => GameStatus)) => void;
   playerSpeedMod: number;
+  levelIndex: number;
 }
 
 interface FloatingText {
@@ -18,31 +19,30 @@ interface FloatingText {
   velY: number;
 }
 
-// Extended Particle Interface for internal use
 interface ExtendedParticle extends Particle {
     type?: 'DEFAULT' | 'SPARK' | 'SHOCKWAVE' | 'CHARGE' | 'SLASH' | 'RING';
     rotation?: number;
     scale?: number;
 }
 
-// Audio Context (Singleton pattern for the component life)
 let audioCtx: AudioContext | null = null;
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatus, playerSpeedMod }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatus, playerSpeedMod, levelIndex }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapCacheRef = useRef<HTMLCanvasElement | null>(null);
   const requestRef = useRef<number>(0);
   const frameCount = useRef<number>(0);
   
-  // Refs for props to avoid stale closures in game loop
   const gameStatusRef = useRef(gameStatus);
   const playerSpeedModRef = useRef(playerSpeedMod);
+  const levelIndexRef = useRef(levelIndex);
 
   useEffect(() => { gameStatusRef.current = gameStatus; }, [gameStatus]);
   useEffect(() => { playerSpeedModRef.current = playerSpeedMod; }, [playerSpeedMod]);
+  useEffect(() => { levelIndexRef.current = levelIndex; }, [levelIndex]);
 
   // Game State Refs
-  const levelGrid = useRef<number[][]>(JSON.parse(JSON.stringify(LEVEL_DATA)));
+  const levelGrid = useRef<number[][]>(JSON.parse(JSON.stringify(LEVELS[0])));
   const fogGrid = useRef<boolean[][]>(Array(LEVEL_MAP_HEIGHT).fill(null).map(() => Array(LEVEL_MAP_WIDTH).fill(false)));
   
   const activeCharRef = useRef<CharacterType>(CharacterType.ONYX);
@@ -53,11 +53,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
   const playerMaxHealth = useRef<number>(10);
   const score = useRef<number>(0);
   
-  // Input Refs
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   const touchJoystick = useRef<Vector2>({ x: 0, y: 0 });
   
-  // Debuff States
   const playerSpeedMultiplier = useRef<number>(1.0);
   const playerSlowTimer = useRef<number>(0);
   
@@ -69,24 +67,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
   const camera = useRef<Vector2>({ x: 0, y: 0 });
   const screenShake = useRef<number>(0);
   
-  // Action States
   const attackCooldown = useRef<number>(0);
   const isAttacking = useRef<boolean>(false);
   const attackType = useRef<'NORMAL' | 'CHARGED'>('NORMAL');
   const attackFrame = useRef<number>(0); 
   const chargeTimer = useRef<number>(0);
 
-  // Dodge States
   const isDodging = useRef<boolean>(false);
   const dodgeTimer = useRef<number>(0);
   const dodgeCooldown = useRef<number>(0);
   const playerGhostTrail = useRef<{x: number, y: number, life: number}[]>([]);
 
-  // Physics/Feel Enhancements
   const hitStop = useRef<number>(0);
   const noiseBuffer = useRef<AudioBuffer | null>(null);
+  const invulnTimer = useRef<number>(0);
 
-  // --- AUDIO SYSTEM ---
   const initAudio = () => {
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -100,31 +95,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     if (!audioCtx) return;
     const now = audioCtx.currentTime;
 
-    // Lazy Init Noise Buffer for Swing sounds
     if (!noiseBuffer.current) {
-        const bufferSize = audioCtx.sampleRate * 2; // 2 seconds buffer
+        const bufferSize = audioCtx.sampleRate * 2; 
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-             data[i] = Math.random() * 2 - 1;
-        }
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
         noiseBuffer.current = buffer;
     }
 
-    if (type === 'shoot') {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(800, now);
-        osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
-        gain.gain.setValueAtTime(0.05, now);
-        gain.gain.linearRampToValueAtTime(0, now + 0.1);
-        osc.start(now);
-        osc.stop(now + 0.1);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
 
+    if (type === 'shoot') {
+        osc.type = 'square'; osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+        gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
     } else if (type === 'swing') {
         const source = audioCtx.createBufferSource();
         source.buffer = noiseBuffer.current;
@@ -133,166 +120,61 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
         filter.Q.value = 0.5;
         filter.frequency.setValueAtTime(800, now);
         filter.frequency.exponentialRampToValueAtTime(100, now + 0.12);
-        const gain = audioCtx.createGain();
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-        source.connect(filter);
-        filter.connect(gain);
-        gain.connect(audioCtx.destination);
-        source.start(now);
-        source.stop(now + 0.15);
-
-    } else if (type === 'charge_ready') {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(400, now);
-        osc.frequency.linearRampToValueAtTime(880, now + 0.2);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.linearRampToValueAtTime(0, now + 0.2);
-        osc.start(now);
-        osc.stop(now + 0.2);
-
-    } else if (type === 'charge_release') {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(150, now);
-        osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.linearRampToValueAtTime(0, now + 0.3);
-        osc.start(now);
-        osc.stop(now + 0.3);
-        
-        const osc2 = audioCtx.createOscillator();
         const gain2 = audioCtx.createGain();
-        osc2.connect(gain2);
-        gain2.connect(audioCtx.destination);
-        osc2.type = 'square';
-        osc2.frequency.setValueAtTime(80, now);
-        osc2.frequency.exponentialRampToValueAtTime(10, now + 0.4);
         gain2.gain.setValueAtTime(0.3, now);
-        gain2.gain.linearRampToValueAtTime(0, now + 0.4);
-        osc2.start(now);
-        osc2.stop(now + 0.4);
-
-    } else if (type === 'clash') {
-         const osc = audioCtx.createOscillator();
-         osc.type = 'triangle';
-         osc.frequency.setValueAtTime(300, now); 
-         osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
-         const mod = audioCtx.createOscillator();
-         mod.type = 'square';
-         mod.frequency.setValueAtTime(643, now); 
-         const modGain = audioCtx.createGain();
-         modGain.gain.setValueAtTime(1500, now);
-         modGain.gain.exponentialRampToValueAtTime(10, now + 0.15);
-         mod.connect(modGain);
-         modGain.connect(osc.frequency);
-         const gain = audioCtx.createGain();
-         gain.gain.setValueAtTime(0.25, now);
-         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
-         osc.connect(gain);
-         gain.connect(audioCtx.destination);
-         osc.start(now);
-         osc.stop(now + 0.25);
-         mod.start(now);
-         mod.stop(now + 0.25);
-
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+        source.connect(filter); filter.connect(gain2); gain2.connect(audioCtx.destination);
+        source.start(now); source.stop(now + 0.15);
     } else if (type === 'hit') {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(100, now);
-        osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.linearRampToValueAtTime(0, now + 0.2);
-        osc.start(now);
-        osc.stop(now + 0.2);
-
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
+        gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
     } else if (type === 'enemy_hit') {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(150, now);
-        osc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
-        gain.gain.setValueAtTime(0.05, now);
-        gain.gain.linearRampToValueAtTime(0, now + 0.1);
-        osc.start(now);
-        osc.stop(now + 0.1);
-
-    } else if (type === 'powerup') {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(880, now); 
-        osc.frequency.setValueAtTime(1108, now + 0.06); 
-        osc.frequency.setValueAtTime(1318, now + 0.12); 
-        osc.frequency.exponentialRampToValueAtTime(1760, now + 0.25); 
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.linearRampToValueAtTime(0.15, now + 0.1);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-        osc.start(now);
-        osc.stop(now + 0.6);
-
+        osc.type = 'square'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+        gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
     } else if (type === 'gem_collect') {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1200, now);
-        osc.frequency.exponentialRampToValueAtTime(1800, now + 0.1);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.linearRampToValueAtTime(0, now + 0.15);
-        osc.start(now);
-        osc.stop(now + 0.15);
-
+        osc.type = 'sine'; osc.frequency.setValueAtTime(1200, now); osc.frequency.exponentialRampToValueAtTime(1800, now + 0.1);
+        gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now + 0.15);
+        osc.start(now); osc.stop(now + 0.15);
     } else if (type === 'dodge') {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(600, now);
-        osc.frequency.linearRampToValueAtTime(200, now + 0.1);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.linearRampToValueAtTime(0, now + 0.1);
-        osc.start(now);
-        osc.stop(now + 0.1);
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.linearRampToValueAtTime(200, now + 0.1);
+        gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
     } else if (type === 'game_over') {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(150, now);
-        osc.frequency.exponentialRampToValueAtTime(10, now + 1.5); 
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.linearRampToValueAtTime(0, now + 1.5);
-        osc.start(now);
-        osc.stop(now + 1.5);
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(10, now + 1.5); 
+        gain.gain.setValueAtTime(0.3, now); gain.gain.linearRampToValueAtTime(0, now + 1.5);
+        osc.start(now); osc.stop(now + 1.5);
+    } else if (type === 'powerup') {
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(880, now); osc.frequency.setValueAtTime(1108, now + 0.06); osc.frequency.setValueAtTime(1318, now + 0.12); osc.frequency.exponentialRampToValueAtTime(1760, now + 0.25); 
+        gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0.15, now + 0.1); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        osc.start(now); osc.stop(now + 0.6);
+    } else if (type === 'clash') {
+         osc.type = 'triangle'; osc.frequency.setValueAtTime(300, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+         const mod = audioCtx.createOscillator(); mod.type = 'square'; mod.frequency.setValueAtTime(643, now); 
+         const modGain = audioCtx.createGain(); modGain.gain.setValueAtTime(1500, now); modGain.gain.exponentialRampToValueAtTime(10, now + 0.15);
+         mod.connect(modGain); modGain.connect(osc.frequency);
+         gain.gain.setValueAtTime(0.25, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+         osc.start(now); osc.stop(now + 0.25); mod.start(now); mod.stop(now + 0.25);
+    } else if (type === 'charge_ready') {
+        osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.linearRampToValueAtTime(880, now + 0.2);
+        gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+    } else if (type === 'charge_release') {
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
+        gain.gain.setValueAtTime(0.3, now); gain.gain.linearRampToValueAtTime(0, now + 0.3);
+        osc.start(now); osc.stop(now + 0.3);
     }
   };
 
-  const renderStaticMap = () => {
+  const renderStaticMap = (lvlIdx: number) => {
     const canvas = document.createElement('canvas');
     canvas.width = LEVEL_MAP_WIDTH * TILE_SIZE;
     canvas.height = LEVEL_MAP_HEIGHT * TILE_SIZE;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Clear with transparency (void/pits will be transparent)
+    const isForest = lvlIdx === 1;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     for (let y = 0; y < LEVEL_MAP_HEIGHT; y++) {
@@ -302,23 +184,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           const py = y * TILE_SIZE;
   
           if (tile === TileType.FLOOR || tile === TileType.HEART_CONTAINER || tile === TileType.GOAL) {
-            // Base floor color
-            ctx.fillStyle = '#1e293b'; 
+            ctx.fillStyle = isForest ? '#052e16' : '#1e293b'; 
             ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
 
-            // Subtle texture noise
-            ctx.fillStyle = 'rgba(255,255,255,0.03)';
+            ctx.fillStyle = isForest ? 'rgba(20, 83, 45, 0.3)' : 'rgba(255,255,255,0.03)';
             if ((x + y) % 2 === 0) ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
             
-            // Random varied details for "depth"
             const seed = (x * 37 + y * 13) % 100;
             if (seed > 80) {
-                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.fillStyle = isForest ? '#14532d' : 'rgba(0,0,0,0.2)';
                 ctx.fillRect(px + (seed%20), py + (seed%15), 4, 4);
             }
             
-            // Fake AO on edges of floor tiles
-            ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+            ctx.strokeStyle = isForest ? '#14532d' : '#334155';
             ctx.lineWidth = 2;
             ctx.strokeRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
           }
@@ -333,44 +211,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
 
             if (tile === TileType.WALL) {
                 const wallFaceHeight = 20; 
-
-                // Shadow below wall
                 if (y < LEVEL_MAP_HEIGHT - 1 && levelGrid.current[y+1][x] !== TileType.WALL) {
                     ctx.fillStyle = 'rgba(0,0,0,0.5)';
                     ctx.fillRect(px, py + TILE_SIZE, TILE_SIZE, 16);
                 }
-                
-                // Top of Wall (Roof)
-                ctx.fillStyle = '#334155';
+                ctx.fillStyle = isForest ? '#14532d' : '#334155'; 
                 ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE - wallFaceHeight);
-                // Top Highlight
-                ctx.fillStyle = '#475569';
+                ctx.fillStyle = isForest ? '#166534' : '#475569';
                 ctx.fillRect(px, py, TILE_SIZE, 2);
                 ctx.fillRect(px, py, 2, TILE_SIZE - wallFaceHeight);
 
-                // Front Face
                 const faceY = py + TILE_SIZE - wallFaceHeight;
-                
-                // Gradient for face (depth/lighting)
                 const grad = ctx.createLinearGradient(px, faceY, px, faceY + wallFaceHeight);
-                grad.addColorStop(0, '#334155');
-                grad.addColorStop(1, '#0f172a');
-                ctx.fillStyle = grad;
-                ctx.fillRect(px, faceY, TILE_SIZE, wallFaceHeight);
-
-                // Texture: Vertical streaks (wetness/weathering)
+                if (isForest) {
+                    grad.addColorStop(0, '#14532d'); grad.addColorStop(1, '#052e16');
+                } else {
+                    grad.addColorStop(0, '#334155'); grad.addColorStop(1, '#0f172a');
+                }
+                ctx.fillStyle = grad; ctx.fillRect(px, faceY, TILE_SIZE, wallFaceHeight);
                 ctx.fillStyle = 'rgba(0,0,0,0.2)';
                 if ((x + y) % 3 === 0) ctx.fillRect(px + 8, faceY, 4, wallFaceHeight);
                 if ((x * y) % 4 === 0) ctx.fillRect(px + 24, faceY, 2, wallFaceHeight);
-                
-                // Top edge highlight of the front face
-                ctx.fillStyle = 'rgba(255,255,255,0.1)';
-                ctx.fillRect(px, faceY, TILE_SIZE, 1);
-                
-                // Side definition
-                ctx.fillStyle = 'rgba(0,0,0,0.25)';
-                ctx.fillRect(px, faceY, 1, wallFaceHeight);
-                ctx.fillRect(px + TILE_SIZE - 1, faceY, 1, wallFaceHeight);
+                ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(px, faceY, TILE_SIZE, 1);
+                ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(px, faceY, 1, wallFaceHeight); ctx.fillRect(px + TILE_SIZE - 1, faceY, 1, wallFaceHeight);
             }
         }
     }
@@ -378,8 +241,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
   };
 
   const initGame = useCallback(() => {
-    levelGrid.current = JSON.parse(JSON.stringify(LEVEL_DATA));
-    mapCacheRef.current = renderStaticMap();
+    const selectedLevel = LEVELS[levelIndex] || LEVELS[0];
+    levelGrid.current = JSON.parse(JSON.stringify(selectedLevel));
+    mapCacheRef.current = renderStaticMap(levelIndex);
     fogGrid.current = Array(LEVEL_MAP_HEIGHT).fill(null).map(() => Array(LEVEL_MAP_WIDTH).fill(false));
     
     playerPos.current = { x: 2 * TILE_SIZE, y: 2 * TILE_SIZE };
@@ -391,9 +255,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     playerSlowTimer.current = 0;
     hitStop.current = 0;
     frameCount.current = 0;
-    score.current = 0;
     chargeTimer.current = 0;
     screenShake.current = 0;
+    invulnTimer.current = 0;
     
     projectiles.current = [];
     particles.current = [];
@@ -401,18 +265,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     floatingTexts.current = [];
     playerGhostTrail.current = [];
     
-    enemies.current = [
-      { id: 'e1', pos: { x: 12 * TILE_SIZE, y: 3 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 3, maxHealth: 3, agroRange: 300, type: 'CHASER', facing: Direction.DOWN, attackCooldown: 0 },
-      { id: 'e2', pos: { x: 20 * TILE_SIZE, y: 7 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 3, maxHealth: 3, agroRange: 300, type: 'CHASER', facing: Direction.DOWN, attackCooldown: 0 },
-      { id: 'd1', pos: { x: 5 * TILE_SIZE, y: 14 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 2, maxHealth: 2, agroRange: 400, type: 'DASHER', facing: Direction.DOWN, attackCooldown: 0 },
-      { id: 'd2', pos: { x: 8 * TILE_SIZE, y: 16 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 2, maxHealth: 2, agroRange: 400, type: 'DASHER', facing: Direction.UP, attackCooldown: 0 },
-      { id: 's1', pos: { x: 5 * TILE_SIZE, y: 10 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 28, height: 28, active: true, health: 2, maxHealth: 2, agroRange: 300, type: 'SLIMER', facing: Direction.DOWN, attackCooldown: 0 },
-      { id: 's2', pos: { x: 25 * TILE_SIZE, y: 2 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 28, height: 28, active: true, health: 2, maxHealth: 2, agroRange: 300, type: 'SLIMER', facing: Direction.DOWN, attackCooldown: 0 },
-      { id: 't1', pos: { x: 24 * TILE_SIZE, y: 14 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 4, maxHealth: 4, agroRange: 450, type: 'TURRET', facing: Direction.LEFT, attackCooldown: 60 },
-      { id: 't2', pos: { x: 8 * TILE_SIZE, y: 5 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 4, maxHealth: 4, agroRange: 450, type: 'TURRET', facing: Direction.DOWN, attackCooldown: 30 },
-      { id: 'tk1', pos: { x: 13 * TILE_SIZE, y: 14 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 48, height: 48, active: true, health: 15, maxHealth: 15, agroRange: 200, type: 'TANK', facing: Direction.DOWN, attackCooldown: 0 },
-      { id: 'e3', pos: { x: 15 * TILE_SIZE, y: 15 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 40, height: 40, active: true, health: 10, maxHealth: 10, agroRange: 500, type: 'CHASER', facing: Direction.DOWN, attackCooldown: 0 },
-    ];
+    if (levelIndex === 0) {
+        enemies.current = [
+            { id: 'e1', pos: { x: 12 * TILE_SIZE, y: 3 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 3, maxHealth: 3, agroRange: 300, type: 'CHASER', facing: Direction.DOWN, attackCooldown: 0 },
+            { id: 'e2', pos: { x: 20 * TILE_SIZE, y: 7 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 3, maxHealth: 3, agroRange: 300, type: 'CHASER', facing: Direction.DOWN, attackCooldown: 0 },
+            { id: 'd1', pos: { x: 5 * TILE_SIZE, y: 14 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 2, maxHealth: 2, agroRange: 400, type: 'DASHER', facing: Direction.DOWN, attackCooldown: 0 },
+            { id: 's1', pos: { x: 5 * TILE_SIZE, y: 10 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 28, height: 28, active: true, health: 2, maxHealth: 2, agroRange: 300, type: 'SLIMER', facing: Direction.DOWN, attackCooldown: 0 },
+            { id: 't1', pos: { x: 24 * TILE_SIZE, y: 14 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 4, maxHealth: 4, agroRange: 450, type: 'TURRET', facing: Direction.LEFT, attackCooldown: 60 },
+            { id: 'tk1', pos: { x: 13 * TILE_SIZE, y: 14 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 48, height: 48, active: true, health: 15, maxHealth: 15, agroRange: 200, type: 'TANK', facing: Direction.DOWN, attackCooldown: 0 },
+        ];
+    } else {
+        enemies.current = [
+            { id: 's1', pos: { x: 5 * TILE_SIZE, y: 5 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 28, height: 28, active: true, health: 3, maxHealth: 3, agroRange: 300, type: 'SLIMER', facing: Direction.DOWN, attackCooldown: 0 },
+            { id: 'd1', pos: { x: 8 * TILE_SIZE, y: 8 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 3, maxHealth: 3, agroRange: 450, type: 'DASHER', facing: Direction.DOWN, attackCooldown: 0 },
+            { id: 't1', pos: { x: 15 * TILE_SIZE, y: 3 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 5, maxHealth: 5, agroRange: 500, type: 'TURRET', facing: Direction.DOWN, attackCooldown: 60 },
+            { id: 'e1', pos: { x: 20 * TILE_SIZE, y: 6 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 32, height: 32, active: true, health: 4, maxHealth: 4, agroRange: 350, type: 'CHASER', facing: Direction.DOWN, attackCooldown: 0 },
+            { id: 'tk1', pos: { x: 25 * TILE_SIZE, y: 16 * TILE_SIZE }, vel: { x: 0, y: 0 }, width: 48, height: 48, active: true, health: 20, maxHealth: 20, agroRange: 250, type: 'TANK', facing: Direction.DOWN, attackCooldown: 0 },
+        ];
+    }
+    
     window.dispatchEvent(new CustomEvent('hud-update', { 
         detail: { 
           char: activeCharRef.current, 
@@ -421,7 +292,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           score: score.current
         } 
     }));
-  }, []);
+  }, [levelIndex]);
 
   const hasInitialized = useRef(false);
   useEffect(() => {
@@ -432,13 +303,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
       if (gameStatus === GameStatus.MENU) {
           hasInitialized.current = false;
       }
-  }, [gameStatus, initGame]);
+  }, [gameStatus, levelIndex, initGame]);
 
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      initAudio(); 
+      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) {
+        e.preventDefault();
+      }
+      
       keysPressed.current[e.code] = true;
+      initAudio(); 
 
       if (gameStatusRef.current === GameStatus.PLAYING) {
         if (e.code === 'KeyQ') swapCharacter();
@@ -466,11 +341,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
       }
     };
     
-    // Custom Input Event Listener for Touch Controls
     const handleGameInput = (e: Event) => {
         const ce = e as CustomEvent;
         const { type, data } = ce.detail;
-        initAudio(); // Ensure audio context is active on touch
+        initAudio(); 
 
         if (type === 'joystick') {
              touchJoystick.current = { x: data.x, y: data.y };
@@ -547,7 +421,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     if (activeCharRef.current === CharacterType.ZAINAB) {
       playSound('shoot');
       const vel = { x: 0, y: 0 };
-      const speed = 8; 
+      const speed = 8 * playerSpeedModRef.current; 
       if (playerFacing.current === Direction.UP) vel.y = -speed;
       if (playerFacing.current === Direction.DOWN) vel.y = speed;
       if (playerFacing.current === Direction.LEFT) vel.x = -speed;
@@ -587,7 +461,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     dodgeCooldown.current = 60;
     chargeTimer.current = 0; 
     
-    const dodgeSpeed = 10; 
+    const dodgeSpeed = 10 * playerSpeedModRef.current;
     const dir = getDirectionOffset(playerFacing.current, 1);
     playerVel.current = { x: dir.x * dodgeSpeed, y: dir.y * dodgeSpeed };
     
@@ -625,7 +499,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
 
   const createSlashImpact = (x: number, y: number, color: string) => {
       const angle = Math.random() * Math.PI * 2;
-      // Slash line particle
       particles.current.push({
           id: Math.random().toString(),
           pos: { x, y },
@@ -637,9 +510,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           maxLife: 12,
           color: '#FFFFFF',
           type: 'SLASH',
-          rotation: angle
+          rotation: angle,
+          facing: Direction.DOWN
       });
-      // Cross slash
        particles.current.push({
           id: Math.random().toString(),
           pos: { x, y },
@@ -651,9 +524,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           maxLife: 8,
           color: color,
           type: 'SLASH',
-          rotation: angle + Math.PI/2
+          rotation: angle + Math.PI/2,
+          facing: Direction.DOWN
       });
-      // Ring expanding
       particles.current.push({
           id: Math.random().toString(),
           pos: { x, y },
@@ -664,14 +537,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           life: 15,
           maxLife: 15,
           color: color,
-          type: 'RING'
+          type: 'RING',
+          facing: Direction.DOWN
       });
 
       createSparks(x, y, color, 8);
   };
 
   const createImpactEffect = (x: number, y: number, color: string) => {
-      // Central Burst
       for (let i = 0; i < 12; i++) {
         const angle = Math.random() * Math.PI * 2;
         const speed = 3 + Math.random() * 5;
@@ -690,7 +563,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           rotation: angle
         });
       }
-      // Rings
       particles.current.push({
           id: Math.random().toString(),
           pos: { x, y },
@@ -811,7 +683,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
   const damageEnemy = (e: Enemy, dmg: number) => {
     e.health -= dmg;
     e.hitFlash = 10;
-    hitStop.current = 4; // Small hitstop for crunch
+    hitStop.current = 4;
     playSound('enemy_hit');
     
     if (e.health <= 0) {
@@ -820,10 +692,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
       createExplosion(e.pos.x + 16, e.pos.y + 16, '#00FF00', 15);
       createGem(e.pos.x + e.width/2 - 6, e.pos.y + e.height/2 - 6);
     }
-  };
-
-  const rectIntersect = (x1: number, y1: number, w1: number, h1: number, x2: number, y2: number, w2: number, h2: number) => {
-    return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1;
   };
 
   const checkWallCollision = (x: number, y: number, size: number) => {
@@ -844,6 +712,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
       return false;
   };
 
+  const rectIntersect = (x1: number, y1: number, w1: number, h1: number, x2: number, y2: number, w2: number, h2: number) => {
+    return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1;
+  };
+
+  const updateCamera = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const targetX = playerPos.current.x - canvas.width / 2 + 12;
+      const targetY = playerPos.current.y - canvas.height / 2 + 12;
+      camera.current.x += (targetX - camera.current.x) * 0.1;
+      camera.current.y += (targetY - camera.current.y) * 0.1;
+      
+      const maxX = Math.max(0, LEVEL_MAP_WIDTH * TILE_SIZE - canvas.width);
+      const maxY = Math.max(0, LEVEL_MAP_HEIGHT * TILE_SIZE - canvas.height);
+      camera.current.x = Math.max(0, Math.min(camera.current.x, maxX));
+      camera.current.y = Math.max(0, Math.min(camera.current.y, maxY));
+  };
+
   const checkTileInteraction = () => {
       const cx = playerPos.current.x + 12;
       const cy = playerPos.current.y + 12;
@@ -857,10 +743,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
               playSound('gem_collect');
           } else if (tile === TileType.HEART_CONTAINER) {
                levelGrid.current[ty][tx] = TileType.FLOOR;
-               mapCacheRef.current = renderStaticMap();
+               mapCacheRef.current = renderStaticMap(levelIndexRef.current);
                playerMaxHealth.current += 2;
                playerHealth.current = playerMaxHealth.current;
                playSound('powerup');
+               createPickupEffect(cx, cy);
                floatingTexts.current.push({
                    id: Math.random().toString(),
                    x: cx, y: cy - 20,
@@ -881,19 +768,318 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
       }
   };
 
-  const updateCamera = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const targetX = playerPos.current.x - canvas.width / 2 + 12;
-      const targetY = playerPos.current.y - canvas.height / 2 + 12;
-      camera.current.x += (targetX - camera.current.x) * 0.1;
-      camera.current.y += (targetY - camera.current.y) * 0.1;
+  const takeDamage = (amount: number) => {
+    if (isDodging.current || invulnTimer.current > 0 || gameStatusRef.current !== GameStatus.PLAYING) return;
+    
+    playerHealth.current = Math.max(0, playerHealth.current - amount);
+    invulnTimer.current = 60; // 1 second invuln
+    screenShake.current = 5;
+    playSound('hit');
+    
+    if (playerHealth.current <= 0) {
+        setGameStatus(GameStatus.GAME_OVER);
+        playSound('game_over');
+    }
+
+    window.dispatchEvent(new CustomEvent('hud-update', { 
+        detail: { 
+          char: activeCharRef.current, 
+          hp: playerHealth.current, 
+          maxHp: playerMaxHealth.current,
+          score: score.current
+        } 
+    }));
+  };
+
+  const updateFog = () => {
+      const cx = Math.floor((playerPos.current.x + 12) / TILE_SIZE);
+      const cy = Math.floor((playerPos.current.y + 12) / TILE_SIZE);
+      const radius = 6;
+      for (let y = cy - radius; y <= cy + radius; y++) {
+          for (let x = cx - radius; x <= cx + radius; x++) {
+              if (y >= 0 && y < LEVEL_MAP_HEIGHT && x >= 0 && x < LEVEL_MAP_WIDTH) {
+                  if ((x-cx)**2 + (y-cy)**2 <= radius**2) {
+                      fogGrid.current[y][x] = true;
+                  }
+              }
+          }
+      }
+  };
+
+  const updatePhysics = () => {
+      if (gameStatusRef.current !== GameStatus.PLAYING) return;
       
-      // Bounds check
-      const maxX = Math.max(0, LEVEL_MAP_WIDTH * TILE_SIZE - canvas.width);
-      const maxY = Math.max(0, LEVEL_MAP_HEIGHT * TILE_SIZE - canvas.height);
-      camera.current.x = Math.max(0, Math.min(camera.current.x, maxX));
-      camera.current.y = Math.max(0, Math.min(camera.current.y, maxY));
+      if (invulnTimer.current > 0) invulnTimer.current--;
+      if (hitStop.current > 0) {
+          hitStop.current--;
+          return;
+      }
+      
+      // Screen Shake Decay
+      if (screenShake.current > 0) {
+        screenShake.current *= 0.8; // Faster decay
+        if (screenShake.current < 0.5) screenShake.current = 0;
+      }
+
+      // -- MOVEMENT --
+      let dx = 0;
+      let dy = 0;
+      if (keysPressed.current['ArrowUp'] || keysPressed.current['KeyW']) dy = -1;
+      if (keysPressed.current['ArrowDown'] || keysPressed.current['KeyS']) dy = 1;
+      if (keysPressed.current['ArrowLeft'] || keysPressed.current['KeyA']) dx = -1;
+      if (keysPressed.current['ArrowRight'] || keysPressed.current['KeyD']) dx = 1;
+
+      if (touchJoystick.current.x !== 0 || touchJoystick.current.y !== 0) {
+          dx = touchJoystick.current.x;
+          dy = touchJoystick.current.y;
+      } else if (dx !== 0 || dy !== 0) {
+          // Normalize keyboard
+          const l = Math.hypot(dx, dy);
+          dx /= l; dy /= l;
+      }
+
+      // Physics Config
+      const stats = PHYSICS[activeCharRef.current];
+      const targetSpeed = stats.maxSpeed * playerSpeedModRef.current;
+      const accel = stats.moveSpeed;
+
+      // Dodge Override
+      if (isDodging.current) {
+          dodgeTimer.current--;
+          if (dodgeTimer.current <= 0) {
+              isDodging.current = false;
+              playerVel.current = {x: 0, y: 0};
+          }
+           // Ghost Trail
+           if (frameCount.current % 3 === 0) {
+               playerGhostTrail.current.push({ x: playerPos.current.x, y: playerPos.current.y, life: 10 });
+           }
+      } else {
+          // Apply movement
+          if (dx === 0 && dy === 0) {
+              // Apply Friction
+              playerVel.current.x *= stats.friction;
+              playerVel.current.y *= stats.friction;
+              if (Math.abs(playerVel.current.x) < 0.1) playerVel.current.x = 0;
+              if (Math.abs(playerVel.current.y) < 0.1) playerVel.current.y = 0;
+          } else {
+              playerVel.current.x += (dx * targetSpeed - playerVel.current.x) * accel;
+              playerVel.current.y += (dy * targetSpeed - playerVel.current.y) * accel;
+          }
+          
+          if (playerSlowTimer.current > 0) {
+              playerVel.current.x *= 0.5;
+              playerVel.current.y *= 0.5;
+              playerSlowTimer.current--;
+          }
+      }
+
+      // Apply Velocity & Collision
+      const nextX = playerPos.current.x + playerVel.current.x;
+      if (!checkWallCollision(nextX, playerPos.current.y, 24)) {
+          playerPos.current.x = nextX;
+      } else {
+          playerVel.current.x = 0;
+      }
+      
+      const nextY = playerPos.current.y + playerVel.current.y;
+      if (!checkWallCollision(playerPos.current.x, nextY, 24)) {
+          playerPos.current.y = nextY;
+      } else {
+          playerVel.current.y = 0;
+      }
+
+      // Facing
+      if (!isDodging.current && (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1)) {
+          if (Math.abs(dx) > Math.abs(dy)) {
+              playerFacing.current = dx > 0 ? Direction.RIGHT : Direction.LEFT;
+          } else {
+              playerFacing.current = dy > 0 ? Direction.DOWN : Direction.UP;
+          }
+      }
+
+      // Attack Logic
+      if (attackCooldown.current > 0) attackCooldown.current--;
+      if (dodgeCooldown.current > 0) dodgeCooldown.current--;
+      
+      // Charge
+      if (keysPressed.current['Space'] && activeCharRef.current === CharacterType.ONYX && !isAttacking.current && !isDodging.current) {
+          chargeTimer.current++;
+          if (chargeTimer.current === 30) playSound('charge_ready');
+          // Visual charge gathering
+          if (chargeTimer.current % 5 === 0) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 20;
+            particles.current.push({
+                id: Math.random().toString(),
+                pos: { x: playerPos.current.x + 12 + Math.cos(angle)*dist, y: playerPos.current.y + 12 + Math.sin(angle)*dist },
+                vel: { x: -Math.cos(angle), y: -Math.sin(angle) }, // Suck in
+                width: 2, height: 2, active: true, life: 20, maxLife: 20,
+                color: chargeTimer.current > 30 ? '#FF4500' : '#FFF',
+                type: 'DEFAULT', facing: Direction.DOWN
+            });
+          }
+      } else if (!keysPressed.current['Space'] && !isAttacking.current) {
+          chargeTimer.current = 0;
+      }
+
+      if (isAttacking.current) {
+          attackFrame.current--;
+          if (attackFrame.current <= 0) isAttacking.current = false;
+          
+          // Hitbox Logic
+          if (activeCharRef.current === CharacterType.ONYX) {
+              const range = attackType.current === 'CHARGED' ? 60 : 40;
+              const cx = playerPos.current.x + 12;
+              const cy = playerPos.current.y + 12;
+              
+              enemies.current.forEach(e => {
+                  if (!e.active) return;
+                  if (e.hitFlash && e.hitFlash > 0) return; // iframe
+
+                  let hit = false;
+                  if (attackType.current === 'CHARGED') {
+                       // AOE
+                       if (Math.hypot((e.pos.x + e.width/2) - cx, (e.pos.y + e.height/2) - cy) < range + e.width/2) hit = true;
+                  } else {
+                       // Directional Rect
+                       const ex = e.pos.x + e.width/2;
+                       const ey = e.pos.y + e.height/2;
+                       let rx = cx, ry = cy, rw = 0, rh = 0;
+                       
+                       if (playerFacing.current === Direction.UP) { rx = cx - 20; ry = cy - range; rw = 40; rh = range; }
+                       if (playerFacing.current === Direction.DOWN) { rx = cx - 20; ry = cy; rw = 40; rh = range; }
+                       if (playerFacing.current === Direction.LEFT) { rx = cx - range; ry = cy - 20; rw = range; rh = 40; }
+                       if (playerFacing.current === Direction.RIGHT) { rx = cx; ry = cy - 20; rw = range; rh = 40; }
+                       
+                       if (rectIntersect(rx, ry, rw, rh, e.pos.x, e.pos.y, e.width, e.height)) hit = true;
+                  }
+                  
+                  if (hit) {
+                      damageEnemy(e, stats.damage * (attackType.current === 'CHARGED' ? 2 : 1));
+                      createSlashImpact(e.pos.x + e.width/2, e.pos.y + e.height/2, '#FFF');
+                  }
+              });
+          }
+      }
+
+      // Entity Updates
+      
+      // Projectiles
+      for (let i = projectiles.current.length - 1; i >= 0; i--) {
+          const p = projectiles.current[i];
+          p.pos.x += p.vel.x;
+          p.pos.y += p.vel.y;
+          p.life--;
+          
+          if (!p.trail) p.trail = [];
+          p.trail.push({x: p.pos.x, y: p.pos.y});
+          if (p.trail.length > 5) p.trail.shift();
+
+          if (checkWallCollision(p.pos.x, p.pos.y, p.width) || p.life <= 0) {
+               p.active = false;
+               createSparks(p.pos.x, p.pos.y, p.color, 4);
+          } else {
+              if (p.owner === 'PLAYER') {
+                  for (const e of enemies.current) {
+                      if (e.active && rectIntersect(p.pos.x - p.width/2, p.pos.y - p.height/2, p.width, p.height, e.pos.x, e.pos.y, e.width, e.height)) {
+                          damageEnemy(e, p.damage);
+                          p.active = false;
+                          createImpactEffect(p.pos.x, p.pos.y, p.color);
+                          break;
+                      }
+                  }
+              } else {
+                  if (rectIntersect(p.pos.x - p.width/2, p.pos.y - p.height/2, p.width, p.height, playerPos.current.x, playerPos.current.y, 24, 24)) {
+                      takeDamage(p.damage);
+                      p.active = false;
+                  }
+              }
+          }
+          if (!p.active) projectiles.current.splice(i, 1);
+      }
+      
+      // Enemies
+      enemies.current.forEach(e => {
+          if (!e.active) return;
+          if (e.hitFlash && e.hitFlash > 0) e.hitFlash--;
+          
+          const dist = Math.hypot((playerPos.current.x) - e.pos.x, (playerPos.current.y) - e.pos.y);
+          if (dist < e.agroRange) {
+              if (e.type === 'TURRET') {
+                  if (e.attackCooldown <= 0 && dist < 300) {
+                      const ang = Math.atan2(playerPos.current.y - e.pos.y, playerPos.current.x - e.pos.x);
+                      projectiles.current.push({
+                          id: Math.random().toString(),
+                          pos: {x: e.pos.x + e.width/2, y: e.pos.y + e.height/2},
+                          vel: {x: Math.cos(ang)*3, y: Math.sin(ang)*3},
+                          width: 8, height: 8, active: true, life: 100, owner: 'ENEMY', damage: 1, color: '#ef4444',
+                          facing: Direction.DOWN
+                      });
+                      e.attackCooldown = 90;
+                  }
+                  if (e.attackCooldown > 0) e.attackCooldown--;
+              } else {
+                  // Move towards player
+                  const ang = Math.atan2(playerPos.current.y - e.pos.y, playerPos.current.x - e.pos.x);
+                  const spd = e.type === 'DASHER' ? 2 : 1.2;
+                  e.vel.x = Math.cos(ang) * spd;
+                  e.vel.y = Math.sin(ang) * spd;
+                  
+                  const nx = e.pos.x + e.vel.x;
+                  if (!checkWallCollision(nx, e.pos.y, e.width)) e.pos.x = nx;
+                  const ny = e.pos.y + e.vel.y;
+                  if (!checkWallCollision(e.pos.x, ny, e.height)) e.pos.y = ny;
+                  
+                  // Contact Damage
+                  if (rectIntersect(e.pos.x, e.pos.y, e.width, e.height, playerPos.current.x, playerPos.current.y, 24, 24)) {
+                      takeDamage(1);
+                  }
+              }
+          }
+      });
+      
+      // Pickups (Gem Magnet)
+      pickups.current.forEach(p => {
+          if (!p.active) return;
+          const dx = (playerPos.current.x + 12) - p.pos.x;
+          const dy = (playerPos.current.y + 12) - p.pos.y;
+          const dist = Math.hypot(dx, dy);
+          
+          if (dist < 150 && !p.collected) { // Increased magnet range
+              // Stronger Magnet effect
+              p.pos.x += (dx / dist) * 8;
+              p.pos.y += (dy / dist) * 8;
+          }
+
+          if (dist < 24 && !p.collected) {
+              p.active = false;
+              score.current += p.value;
+              playSound('gem_collect');
+              createPickupEffect(p.pos.x, p.pos.y);
+               window.dispatchEvent(new CustomEvent('hud-update', { 
+                detail: { 
+                  char: activeCharRef.current, 
+                  hp: playerHealth.current, 
+                  maxHp: playerMaxHealth.current,
+                  score: score.current
+                } 
+            }));
+          }
+      });
+      
+      // Particles cleanup
+      for (let i = particles.current.length - 1; i >= 0; i--) {
+          const p = particles.current[i];
+          p.pos.x += p.vel.x;
+          p.pos.y += p.vel.y;
+          p.life--;
+          if (p.life <= 0) particles.current.splice(i, 1);
+      }
+
+      updateFog();
+      updateCamera();
+      checkTileInteraction();
   };
 
   const drawBipedalEnemy = (ctx: CanvasRenderingContext2D, e: Enemy, time: number) => {
@@ -902,10 +1088,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
       const breathe = Math.sin(time / 300) * 1;
       
       ctx.save();
-      // Color palettes & Config
-      let skinColor = '#65a30d'; // Default Goblin Green
-      let armorColor = '#78350f'; // Leather
-      let scale = 1;
+      let skinColor = '#65a30d'; let armorColor = '#78350f'; let scale = 1;
       let weaponType: 'SWORD' | 'BOW' | 'HAMMER' | 'DAGGER' = 'SWORD';
 
       if (e.type === 'CHASER') {
@@ -1078,6 +1261,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
   };
 
   const drawEnemy = (ctx: CanvasRenderingContext2D, e: Enemy) => {
+      const time = Date.now();
       if (e.hitFlash && e.hitFlash > 0) {
           const cx = e.pos.x + e.width/2;
           const cy = e.pos.y + e.height/2;
@@ -1088,8 +1272,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           return;
       }
       
-      const time = Date.now();
-
       if (e.type === 'SLIMER') {
           drawSlimer(ctx, e, time);
       } else {
@@ -1107,530 +1289,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
       ctx.restore();
   };
 
-  const updatePhysics = () => {
-    if (gameStatusRef.current !== GameStatus.PLAYING) return;
-
-    // HITSTOP: If active, pause logic, just render last frame (ish) or subtle shake
-    if (hitStop.current > 0) {
-        hitStop.current--;
-        // We still run requestAnimationFrame loop in tick, so we just return here to skip physics
-        return; 
-    }
-
-    // Screen Shake Decay
-    if (screenShake.current > 0) {
-        screenShake.current *= 0.9;
-        if (screenShake.current < 0.5) screenShake.current = 0;
-    }
-
-    const charConfig = PHYSICS[activeCharRef.current];
-    const isOnyx = activeCharRef.current === CharacterType.ONYX;
-
-    if (isOnyx && keysPressed.current['Space'] && !isAttacking.current && !isDodging.current) {
-        chargeTimer.current++;
-        if (chargeTimer.current % 5 === 0) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 20;
-            particles.current.push({
-                id: Math.random().toString(),
-                pos: { x: playerPos.current.x + 12 + Math.cos(angle)*dist, y: playerPos.current.y + 12 + Math.sin(angle)*dist },
-                vel: { x: -Math.cos(angle), y: -Math.sin(angle) }, 
-                width: 2, height: 2, active: true, life: 20, maxLife: 20,
-                color: chargeTimer.current > 30 ? '#FF4500' : '#FFF',
-                type: 'DEFAULT', facing: Direction.DOWN
-            });
-        }
-        if (chargeTimer.current === 30) {
-            playSound('charge_ready');
-            createShockwave(playerPos.current.x + 12, playerPos.current.y + 12, '#FFD700');
-        }
-    } else if (!keysPressed.current['Space']) {
-        if (!isAttacking.current) chargeTimer.current = 0;
-    }
-
-    if (playerSlowTimer.current > 0) {
-        playerSlowTimer.current--;
-        if (playerSlowTimer.current <= 0) {
-            playerSpeedMultiplier.current = 1.0;
-        }
-    }
-    if (dodgeCooldown.current > 0) dodgeCooldown.current--;
-
-    const pCx = Math.floor((playerPos.current.x + 12) / TILE_SIZE);
-    const pCy = Math.floor((playerPos.current.y + 12) / TILE_SIZE);
-    const radiusSq = 25; 
-
-    for (let y = pCy - 5; y <= pCy + 5; y++) {
-        for (let x = pCx - 5; x <= pCx + 5; x++) {
-            if (y >= 0 && y < LEVEL_MAP_HEIGHT && x >= 0 && x < LEVEL_MAP_WIDTH) {
-                if (fogGrid.current[y][x]) continue; 
-                const distSq = (x - pCx) * (x - pCx) + (y - pCy) * (y - pCy);
-                if (distSq <= radiusSq) {
-                    fogGrid.current[y][x] = true;
-                }
-            }
-        }
-    }
-
-    if (isDodging.current) {
-        dodgeTimer.current--;
-        if (dodgeTimer.current % 3 === 0) {
-            playerGhostTrail.current.push({
-                x: playerPos.current.x,
-                y: playerPos.current.y,
-                life: 10
-            });
-        }
-        if (dodgeTimer.current <= 0) {
-            isDodging.current = false;
-            playerVel.current.x *= 0.5; 
-            playerVel.current.y *= 0.5;
-        }
-    } else {
-        let inputX = 0;
-        let inputY = 0;
-
-        // Keyboard
-        if (keysPressed.current['ArrowLeft'] || keysPressed.current['KeyA']) inputX -= 1;
-        if (keysPressed.current['ArrowRight'] || keysPressed.current['KeyD']) inputX += 1;
-        if (keysPressed.current['ArrowUp'] || keysPressed.current['KeyW']) inputY -= 1;
-        if (keysPressed.current['ArrowDown'] || keysPressed.current['KeyS']) inputY += 1;
-
-        // Joystick Override/Add
-        if (Math.abs(touchJoystick.current.x) > 0.1) inputX = touchJoystick.current.x;
-        if (Math.abs(touchJoystick.current.y) > 0.1) inputY = touchJoystick.current.y;
-
-        if (inputX !== 0 || inputY !== 0) {
-            // Normalize if strictly keyboard, joystick usually already normalized
-            if (Math.abs(inputX) > 1 || Math.abs(inputY) > 1 || (inputX !== 0 && inputY !== 0 && touchJoystick.current.x === 0)) {
-                const len = Math.hypot(inputX, inputY);
-                inputX /= len;
-                inputY /= len;
-            }
-            
-            // Allow turning during attack for responsiveness (removed lock)
-            if (Math.abs(inputX) > Math.abs(inputY)) {
-                    playerFacing.current = inputX > 0 ? Direction.RIGHT : Direction.LEFT;
-            } else {
-                    playerFacing.current = inputY > 0 ? Direction.DOWN : Direction.UP;
-            }
-        }
-
-        const moveMulti = isAttacking.current && isOnyx ? 0.5 : 1.0;
-        const chargeSlow = (isOnyx && chargeTimer.current > 0) ? 0.4 : 1.0; 
-        const speedSetting = playerSpeedModRef.current;
-        
-        const maxSpd = charConfig.maxSpeed * moveMulti * chargeSlow * playerSpeedMultiplier.current * speedSetting;
-
-        const targetVx = inputX * maxSpd;
-        const targetVy = inputY * maxSpd;
-
-        const applyForce = (currentVel: number, targetVel: number) => {
-            const hasInput = Math.abs(targetVel) > 0.01;
-            
-            if (hasInput) {
-                let accel = charConfig.moveSpeed;
-                const isTurning = Math.sign(targetVel) !== Math.sign(currentVel) && Math.abs(currentVel) > 0.5;
-                if (isTurning) {
-                    if (isOnyx) accel *= 2.5;
-                    else accel *= 0.3;
-                }
-                return currentVel + (targetVel - currentVel) * accel;
-            } else {
-                let friction = charConfig.friction;
-                if (Math.abs(currentVel) < 0.1) return 0;
-                return currentVel * friction;
-            }
-        };
-
-        playerVel.current.x = applyForce(playerVel.current.x, targetVx);
-        playerVel.current.y = applyForce(playerVel.current.y, targetVy);
-    }
-
-    const nextX = playerPos.current.x + playerVel.current.x;
-    const nextY = playerPos.current.y + playerVel.current.y;
-    const playerSize = 24;
-    const padding = (TILE_SIZE - playerSize) / 2;
-    
-    if (!checkWallCollision(nextX + padding, playerPos.current.y + padding, playerSize)) {
-      playerPos.current.x = nextX;
-    } else {
-      if(isDodging.current) isDodging.current = false;
-      playerVel.current.x = 0;
-    }
-    if (!checkWallCollision(playerPos.current.x + padding, nextY + padding, playerSize)) {
-      playerPos.current.y = nextY;
-    } else {
-      if(isDodging.current) isDodging.current = false;
-      playerVel.current.y = 0;
-    }
-
-    checkTileInteraction();
-
-    if (attackCooldown.current > 0) attackCooldown.current--;
-    if (attackFrame.current > 0) {
-      attackFrame.current--;
-      if (attackFrame.current <= 0) isAttacking.current = false;
-
-      if (isOnyx && attackFrame.current > 2) {
-        let hitbox;
-        const isCharged = attackType.current === 'CHARGED';
-        
-        if (isCharged) {
-            hitbox = {
-                x: playerPos.current.x + 12 - 40,
-                y: playerPos.current.y + 12 - 40,
-                w: 80,
-                h: 80
-            };
-        } else {
-            const offset = getDirectionOffset(playerFacing.current, 32);
-            hitbox = {
-                x: playerPos.current.x + 12 + offset.x,
-                y: playerPos.current.y + 12 + offset.y,
-                w: 32,
-                h: 32
-            };
-        }
-        
-        enemies.current.forEach(e => {
-          if (e.active && (e.hitFlash || 0) <= 0 && rectIntersect(hitbox.x, hitbox.y, hitbox.w, hitbox.h, e.pos.x, e.pos.y, e.width, e.height)) {
-             const dmg = isCharged ? charConfig.damage * 3 : charConfig.damage;
-             damageEnemy(e, dmg);
-             
-             const knockbackMod = e.type === 'TANK' ? 0.1 : 1.0;
-             const kForce = isCharged ? 25 : 10;
-             
-             const dx = e.pos.x - playerPos.current.x;
-             const dy = e.pos.y - playerPos.current.y;
-             const dist = Math.hypot(dx, dy) || 1;
-             e.vel.x += (dx / dist) * kForce * knockbackMod;
-             e.vel.y += (dy / dist) * kForce * knockbackMod;
-             
-             createSlashImpact(e.pos.x + 16, e.pos.y + 16, '#FFFF00');
-             // Impact Rumble
-             screenShake.current = isCharged ? 15 : 8; 
-          }
-        });
-      }
-    }
-
-    projectiles.current.forEach(p => {
-      if (!p.active) return;
-      
-      if (p.trail) {
-        p.trail.push({x: p.pos.x, y: p.pos.y});
-        if (p.trail.length > 10) p.trail.shift();
-      }
-      
-      p.pos.x += p.vel.x;
-      p.pos.y += p.vel.y;
-      p.life--;
-      if (p.life <= 0) p.active = false;
-      
-      if (checkWallCollision(p.pos.x, p.pos.y, p.width)) {
-        p.active = false;
-        createSparks(p.pos.x, p.pos.y, p.color, 5);
-      }
-      
-      if (p.owner === 'PLAYER') {
-        enemies.current.forEach(e => {
-          if (p.active && e.active && rectIntersect(p.pos.x, p.pos.y, p.width, p.height, e.pos.x, e.pos.y, e.width, e.height)) {
-            damageEnemy(e, p.damage);
-            p.active = false;
-            createImpactEffect(p.pos.x, p.pos.y, '#FFD700');
-            
-            const knockbackMod = e.type === 'TANK' ? 0.1 : 1.0;
-            const dx = e.pos.x - p.pos.x;
-            const dy = e.pos.y - p.pos.y;
-            const dist = Math.hypot(dx, dy) || 1;
-            e.vel.x += (dx / dist) * 4 * knockbackMod;
-            e.vel.y += (dy / dist) * 4 * knockbackMod;
-            // Projectile Impact Rumble
-            screenShake.current = 5;
-          }
-        });
-      } else if (p.owner === 'ENEMY') {
-        if (!isDodging.current && p.active && rectIntersect(p.pos.x, p.pos.y, p.width, p.height, playerPos.current.x + 8, playerPos.current.y + 8, 24, 24)) {
-           playerHealth.current -= p.damage;
-           hitStop.current = 6; // Hit stop on player damage
-           // Hit Rumble
-           screenShake.current = 10;
-           playSound('hit');
-           
-           const dx = playerPos.current.x - p.pos.x;
-           const dy = playerPos.current.y - p.pos.y;
-           const dist = Math.hypot(dx, dy) || 1;
-           const force = 10;
-           playerVel.current.x = (dx / dist) * force;
-           playerVel.current.y = (dy / dist) * force;
-
-           p.active = false;
-           createExplosion(p.pos.x, p.pos.y, '#FF0000', 5);
-           if (playerHealth.current <= 0) setGameStatus(GameStatus.GAME_OVER);
-            window.dispatchEvent(new CustomEvent('hud-update', { 
-                detail: { 
-                char: activeCharRef.current, 
-                hp: playerHealth.current, 
-                maxHp: playerMaxHealth.current,
-                score: score.current
-                } 
-            }));
-        }
-      }
-    });
-
-    enemies.current.forEach(e => {
-      if (!e.active) return;
-      if (e.hitFlash && e.hitFlash > 0) e.hitFlash--;
-
-      const dist = Math.hypot(playerPos.current.x - e.pos.x, playerPos.current.y - e.pos.y);
-      const angleToPlayer = Math.atan2(playerPos.current.y - e.pos.y, playerPos.current.x - e.pos.x);
-
-      if (e.attackCooldown > 0) e.attackCooldown--;
-
-      if (e.type === 'TURRET') {
-          e.vel.x *= 0.9; // Smooth Friction
-          e.vel.y *= 0.9;
-          
-          if (dist < e.agroRange && e.attackCooldown <= 0) {
-              const pSpeed = 4; // Reduced from 6
-              projectiles.current.push({
-                id: Math.random().toString(),
-                pos: { x: e.pos.x + e.width/2 - 5, y: e.pos.y + e.height/2 - 5 },
-                vel: { x: Math.cos(angleToPlayer) * pSpeed, y: Math.sin(angleToPlayer) * pSpeed },
-                width: 10,
-                height: 10,
-                active: true,
-                life: 100,
-                owner: 'ENEMY',
-                damage: 1,
-                color: '#D500F9',
-                facing: Direction.DOWN,
-                trail: []
-              });
-              e.attackCooldown = 100; 
-              playSound('shoot');
-              createSparks(e.pos.x + e.width/2 + Math.cos(angleToPlayer)*16, e.pos.y + e.height/2 + Math.sin(angleToPlayer)*16, '#D500F9', 5);
-          }
-
-      } else if (e.type === 'SLIMER') {
-          e.vel.x *= 0.9; // Smooth Friction
-          e.vel.y *= 0.9;
-          if (dist < e.agroRange) {
-            const speed = 0.1; // Reduced force
-            const wobble = Math.sin(Date.now() / 100 + parseInt(e.id.replace(/\D/g, ''))) * 1.5; 
-            const dx = Math.cos(angleToPlayer + wobble * 0.5);
-            const dy = Math.sin(angleToPlayer + wobble * 0.5);
-            e.vel.x += dx * speed;
-            e.vel.y += dy * speed;
-            
-            const maxSpeed = 1.8; // Reduced from 3.5
-            const currentSpeed = Math.hypot(e.vel.x, e.vel.y);
-            if (currentSpeed > maxSpeed) {
-                e.vel.x = (e.vel.x / currentSpeed) * maxSpeed;
-                e.vel.y = (e.vel.y / currentSpeed) * maxSpeed;
-            }
-          }
-
-      } else if (e.type === 'DASHER') {
-          if (e.attackCooldown <= 0) {
-              e.vel.x *= 0.9; // Smooth Friction
-              e.vel.y *= 0.9;
-
-              if (dist < e.agroRange) {
-                  e.attackCooldown = 100; 
-                  if (Math.abs(Math.cos(angleToPlayer)) > Math.abs(Math.sin(angleToPlayer))) {
-                      e.facing = Math.cos(angleToPlayer) > 0 ? Direction.RIGHT : Direction.LEFT;
-                  } else {
-                      e.facing = Math.sin(angleToPlayer) > 0 ? Direction.DOWN : Direction.UP;
-                  }
-              }
-          } else if (e.attackCooldown > 60) {
-              e.vel.x *= 0.5; 
-              e.vel.y *= 0.5;
-          } else if (e.attackCooldown === 60) {
-              const dashSpeed = 9; // Reduced from 14
-              e.vel.x = Math.cos(angleToPlayer) * dashSpeed;
-              e.vel.y = Math.sin(angleToPlayer) * dashSpeed;
-              playSound('dodge'); 
-              createShockwave(e.pos.x + e.width/2, e.pos.y + e.height/2, '#a855f7');
-          } else if (e.attackCooldown < 60 && e.attackCooldown > 20) {
-          } else {
-              e.vel.x *= 0.9;
-              e.vel.y *= 0.9;
-          }
-
-      } else if (e.type === 'TANK') {
-          e.vel.x *= 0.9; // Smooth Friction
-          e.vel.y *= 0.9;
-          if (dist < e.agroRange) {
-             const speed = 0.05; // Very heavy accel
-             e.vel.x += Math.cos(angleToPlayer) * speed;
-             e.vel.y += Math.sin(angleToPlayer) * speed;
-             
-             const maxSpeed = 0.8; // Reduced from 1.5
-             const s = Math.hypot(e.vel.x, e.vel.y);
-             if (s > maxSpeed) {
-                 e.vel.x = (e.vel.x / s) * maxSpeed;
-                 e.vel.y = (e.vel.y / s) * maxSpeed;
-             }
-          }
-
-      } else { // Default Chaser
-          e.vel.x *= 0.9; // Smooth Friction
-          e.vel.y *= 0.9;
-          if (dist < e.agroRange) {
-            const chaseSpeed = 0.25; // Reduced from 0.5
-            const dx = Math.cos(angleToPlayer);
-            const dy = Math.sin(angleToPlayer);
-            e.vel.x += dx * chaseSpeed;
-            e.vel.y += dy * chaseSpeed;
-          }
-      }
-
-      if (!checkWallCollision(e.pos.x + e.vel.x, e.pos.y, e.width)) e.pos.x += e.vel.x;
-      if (!checkWallCollision(e.pos.x, e.pos.y + e.vel.y, e.width)) e.pos.y += e.vel.y;
-
-      if (e.type !== 'DASHER' || e.attackCooldown <= 0) {
-          if (Math.abs(e.vel.x) > 0.1) {
-              e.facing = e.vel.x > 0 ? Direction.RIGHT : Direction.LEFT;
-          } else if (Math.abs(e.vel.y) > 0.1) {
-              e.facing = e.vel.y > 0 ? Direction.DOWN : Direction.UP;
-          }
-      }
-
-      if (rectIntersect(playerPos.current.x + 8, playerPos.current.y + 8, 24, 24, e.pos.x, e.pos.y, e.width, e.height)) {
-        if (e.type === 'SLIMER' && playerSlowTimer.current <= 0 && !isDodging.current) {
-            playerSlowTimer.current = 180;
-            playerSpeedMultiplier.current = 0.4;
-            createExplosion(playerPos.current.x, playerPos.current.y, '#00FF00', 8);
-            floatingTexts.current.push({
-              id: Math.random().toString(),
-              x: playerPos.current.x,
-              y: playerPos.current.y - 20,
-              text: "SLOWED!",
-              color: "#00FF00",
-              life: 40,
-              velY: -0.5
-            });
-        }
-
-        if (attackCooldown.current <= 0 && !isDodging.current) { 
-           const dmg = e.type === 'TANK' ? 2 : 1; 
-           playerHealth.current -= dmg;
-           
-           hitStop.current = 8; // Hit stop on collision damage
-           // Hit Rumble
-           screenShake.current = 12;
-           playSound('hit');
-           const dx = playerPos.current.x - e.pos.x;
-           const dy = playerPos.current.y - e.pos.y;
-           const dist = Math.hypot(dx, dy) || 1;
-           
-           const knockback = e.type === 'TANK' ? 20 : 15;
-           playerVel.current.x = (dx / dist) * knockback;
-           playerVel.current.y = (dy / dist) * knockback;
-           
-           if (playerHealth.current <= 0) setGameStatus(GameStatus.GAME_OVER);
-           attackCooldown.current = 30; 
-           window.dispatchEvent(new CustomEvent('hud-update', { 
-            detail: { 
-              char: activeCharRef.current, 
-              hp: playerHealth.current, 
-              maxHp: playerMaxHealth.current,
-              score: score.current
-            } 
-          }));
-        }
-      }
-    });
-
-    pickups.current.forEach(p => {
-       if (!p.active) return;
-       p.life--;
-       if (p.life <= 0) p.active = false;
-
-       const dx = (playerPos.current.x + 12) - p.pos.x; 
-       const dy = (playerPos.current.y + 12) - p.pos.y;
-       const dist = Math.hypot(dx, dy);
-
-       if (dist < 100 && !p.collected) {
-          p.pos.x += (dx / dist) * 4;
-          p.pos.y += (dy / dist) * 4;
-       } else {
-           p.pos.x += p.vel.x;
-           p.pos.y += p.vel.y;
-           p.vel.x *= 0.9;
-           p.vel.y *= 0.9;
-       }
-
-       if (dist < 24 && !p.collected) {
-           p.collected = true;
-           p.active = false;
-           score.current += p.value;
-           playSound('gem_collect');
-           
-           createSparks(p.pos.x, p.pos.y, '#22d3ee', 5);
-           floatingTexts.current.push({
-              id: Math.random().toString(),
-              x: p.pos.x,
-              y: p.pos.y - 10,
-              text: `+${p.value}`,
-              color: "#22d3ee",
-              life: 30,
-              velY: -1
-           });
-
-           window.dispatchEvent(new CustomEvent('hud-update', { 
-            detail: { 
-              char: activeCharRef.current, 
-              hp: playerHealth.current, 
-              maxHp: playerMaxHealth.current,
-              score: score.current
-            } 
-          }));
-       }
-    });
-
-    particles.current.forEach(p => {
-      if (!p.active) return;
-      p.pos.x += p.vel.x;
-      p.pos.y += p.vel.y;
-      
-      if (p.type === 'SHOCKWAVE') {
-          p.width += 4;
-          p.height += 4;
-          p.pos.x -= 2;
-          p.pos.y -= 2;
-          p.life--;
-      } else if (p.type === 'RING') {
-          p.width += 2;
-          p.height += 2;
-          p.pos.x -= 1;
-          p.pos.y -= 1;
-          p.life--;
-      } else if (p.type === 'SLASH') {
-          p.life--;
-      } else {
-          p.life--;
-      }
-
-      if (p.life <= 0) p.active = false;
-    });
-
-    playerGhostTrail.current.forEach(g => g.life--);
-    playerGhostTrail.current = playerGhostTrail.current.filter(g => g.life > 0);
-
-    floatingTexts.current.forEach(t => {
-        t.y += t.velY;
-        t.life--;
-    });
-    floatingTexts.current = floatingTexts.current.filter(t => t.life > 0);
-
-    updateCamera();
-  };
-
   const drawCharacter = (ctx: CanvasRenderingContext2D, char: CharacterType, x: number, y: number, facing: Direction, isWalking: boolean) => {
     ctx.save();
     ctx.translate(x, y);
@@ -1640,19 +1298,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     }
 
     const time = Date.now();
-    let animY = 0;
-
-    if (isWalking) {
-        animY = Math.sin(time / 100) * 2;
-    } else {
-        if (char === CharacterType.ONYX) {
-            animY = Math.sin(time / 400) * 1; 
-        } else {
-            animY = Math.sin(time / 500) * 3; 
-        }
+    let animY = isWalking ? Math.sin(time / 100) * 2 : (char === CharacterType.ONYX ? Math.sin(time / 400) * 1 : Math.sin(time / 500) * 3);
+    
+    // Charge Ready Visual (Aura)
+    if (char === CharacterType.ONYX && chargeTimer.current > 30) {
+        const pulse = (Math.sin(time/200)+1)*0.5;
+        const auraGrad = ctx.createRadialGradient(16, 16, 10, 16, 16, 40);
+        auraGrad.addColorStop(0, 'rgba(255, 200, 0, 0)');
+        auraGrad.addColorStop(0.5, `rgba(255, 165, 0, ${0.3 + pulse * 0.2})`);
+        auraGrad.addColorStop(1, 'rgba(255, 200, 0, 0)');
+        ctx.fillStyle = auraGrad;
+        ctx.beginPath();
+        ctx.arc(16, 16, 40, 0, Math.PI*2);
+        ctx.fill();
     }
     
-    // Character Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.beginPath();
     const shadowScale = char === CharacterType.ZAINAB && !isWalking ? 1 + (animY * 0.05) : 1;
@@ -1791,7 +1451,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
       ctx.rotate(baseRot);
 
       if (char === CharacterType.ONYX) {
-          // --- SWORD (Refined & Impactful) ---
+          // --- SWORD (Refined & Thinned) ---
           let swingRot = 0;
           ctx.translate(0, -2); 
 
@@ -1803,15 +1463,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
                   const charConfig = PHYSICS[char];
                   const maxFrame = charConfig.attackDuration;
                   const progress = 1 - (frame / maxFrame);
-                  // Heavier ease-out for impact (starts fast, slows down)
                   const ease = 1 - Math.pow(1 - progress, 4); 
                   
-                  // Wide Slash Arc (~160 degrees)
                   const totalSwipe = 2.8; 
                   const startAngle = -totalSwipe / 2 - 0.2;
-                  swingRot = startAngle + (totalSwipe * ease);
+                  swingRot = (startAngle + (totalSwipe * ease));
                   
-                  // Thrust forward during swing
                   const thrust = Math.sin(progress * Math.PI) * 12;
                   ctx.translate(thrust, 0);
               }
@@ -1856,14 +1513,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           }
           ctx.fillStyle = grad;
           ctx.beginPath();
-          ctx.moveTo(2, 3); 
+          ctx.moveTo(2, 3);  // Thinner 
           ctx.lineTo(36, 3);
           ctx.lineTo(42, 0); 
           ctx.lineTo(36, -3); 
           ctx.lineTo(2, -3);
           ctx.fill();
           
-          // Fuller
+          // Fuller (Thinner)
           ctx.fillStyle = '#475569';
           ctx.beginPath();
           ctx.moveTo(4, 1); 
@@ -1889,10 +1546,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
                   // SWORD TRAIL - Arc Segment
                   ctx.save();
                   const trailColor = chargeTimer.current > 30 ? '#fbbf24' : '#FFF';
-                  // Rotate back to align trail with swipe
-                  // We want to draw the trail in the "world" space of the hand, not rotating with the sword
-                  // But it's easier to just draw a "swoosh" relative to hand
-                  ctx.rotate(-swingRot); // Undo sword rotation to draw stationary trail arc relative to hand
+                  ctx.rotate(-swingRot); 
                   
                   const charConfig = PHYSICS[char];
                   const maxFrame = charConfig.attackDuration;
@@ -1903,14 +1557,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
                   const currentAngle = startAngle + (totalSwipe * ease);
 
                   ctx.beginPath();
-                  // Draw arc following blade tip radius (~40)
                   ctx.arc(0, 0, 40, startAngle, currentAngle, false);
                   ctx.strokeStyle = trailColor;
                   ctx.lineWidth = 4;
-                  ctx.globalAlpha = 0.5 * (frame / maxFrame); // Fade out
+                  ctx.globalAlpha = 0.5 * (frame / maxFrame); 
                   ctx.stroke();
                   
-                  // Inner brighter trail
                   ctx.beginPath();
                   ctx.arc(0, 0, 35, startAngle + 0.2, currentAngle, false);
                   ctx.lineWidth = 2;
@@ -1922,18 +1574,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           }
 
       } else {
-          // --- STAFF (Recoil & Flash) ---
+          // --- STAFF (Refined) ---
           if (isAttacking) {
-              const charConfig = PHYSICS[char];
-              const maxFrame = charConfig.attackDuration;
+              const maxFrame = 5;
               const progress = 1 - (frame / maxFrame);
-              
-              // Recoil Animation: Quick forward (cast), slow back
               let thrust = 0;
               if (progress < 0.2) {
-                  thrust = (progress / 0.2) * 12; // Snap forward
+                  thrust = (progress / 0.2) * 12; 
               } else {
-                  thrust = 12 - ((progress - 0.2) / 0.8) * 12; // Slide back
+                  thrust = 12 - ((progress - 0.2) / 0.8) * 12; 
               }
               ctx.translate(thrust, 0);
           } else {
@@ -1964,13 +1613,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           ctx.bezierCurveTo(15, 8, 5, 10, 0, 0);
           ctx.fill();
 
-          // Orb Glow Logic
-          const charConfig = PHYSICS[char];
-          const maxFrame = charConfig.attackDuration;
-          const isFiringFrame = isAttacking && frame > maxFrame - 3; // First 3 frames
-          
           // Orb
           const pulse = Math.sin(Date.now() / 150);
+          const isFiringFrame = isAttacking && frame > 2;
           const glowSize = isFiringFrame ? 15 : 4 + pulse;
           const coreColor = isFiringFrame ? '#FFFFFF' : '#6366f1';
           
@@ -1996,27 +1641,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           if (isFiringFrame) {
               ctx.save();
               ctx.translate(6, 0);
-              // Starburst
               ctx.fillStyle = '#FFF';
               ctx.beginPath();
               for (let i = 0; i < 4; i++) {
                   ctx.rotate(Math.PI / 2);
                   ctx.moveTo(0, 0);
                   ctx.lineTo(5, 2);
-                  ctx.lineTo(15 + Math.random() * 10, 0); // Long spike
+                  ctx.lineTo(15 + Math.random() * 10, 0); 
                   ctx.lineTo(5, -2);
               }
               ctx.fill();
-              
-              // Shock ring
               ctx.strokeStyle = '#a5b4fc';
               ctx.lineWidth = 2;
               ctx.beginPath();
-              ctx.arc(0, 0, 12 + (maxFrame - frame) * 4, 0, Math.PI*2);
+              ctx.arc(0, 0, 12, 0, Math.PI*2);
               ctx.stroke();
               ctx.restore();
           } else if (Math.random() > 0.9) {
-              // Idle sparks
               ctx.fillStyle = '#FFF';
               const ang = Math.random() * Math.PI * 2;
               const dist = 8 + Math.random() * 8;
@@ -2030,10 +1671,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
 
   const drawLighting = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     ctx.save();
+    const isForest = levelIndexRef.current === 1;
     
     // Global Ambient Overlay (Color Grading)
     ctx.globalCompositeOperation = 'soft-light';
-    ctx.fillStyle = '#1e3a8a'; // Deep blue tint for dungeon feel
+    ctx.fillStyle = isForest ? '#14532d' : '#1e3a8a'; // Deep blue tint for dungeon feel
     ctx.fillRect(0, 0, width, height);
     
     // Vignette
@@ -2062,18 +1704,24 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     if (mapCacheRef.current) {
         const shakeX = (Math.random() - 0.5) * screenShake.current;
         const shakeY = (Math.random() - 0.5) * screenShake.current;
+        const isForest = levelIndexRef.current === 1;
         
-        ctx.fillStyle = '#0f172a';
+        ctx.fillStyle = isForest ? '#022c22' : '#020617';
         ctx.fillRect(0,0, canvas.width, canvas.height);
 
         ctx.save();
+        const pX = (-camera.current.x * 0.5) % (TILE_SIZE * 4);
+        const pY = (-camera.current.y * 0.5) % (TILE_SIZE * 4);
+        ctx.translate(pX + shakeX, pY + shakeY);
+        ctx.fillStyle = 'rgba(255,255,255,0.03)';
+        for(let y=-1; y<canvas.height/(TILE_SIZE*4)+2; y++) { for(let x=-1; x<canvas.width/(TILE_SIZE*4)+2; x++) { ctx.fillRect(x*TILE_SIZE*4, y*TILE_SIZE*4, 4, 4); } }
+        ctx.restore();
+
+        ctx.save();
         ctx.translate(-camera.current.x + shakeX, -camera.current.y + shakeY);
-        
         ctx.drawImage(mapCacheRef.current, 0, 0);
     } else {
-        ctx.fillStyle = '#0f172a'; 
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
+        ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.save();
     }
 
     for (let y = 0; y < LEVEL_MAP_HEIGHT; y++) {
