@@ -1,3 +1,3 @@
-git add netlify.toml
-git commit -m "Fix netlify build configuration"
+git add index.html
+git commit -m "Add entry point script to index.html"
 git push origin main
