@@ -1,5 +1,4 @@
-// constants.ts
-import { CharacterType, LevelDefinition } from './types';
+import { CharacterType, LevelDefinition, TileType } from './types';
 
 export const TILE_SIZE = 48;
 export const LEVEL_MAP_WIDTH = 30;
@@ -30,7 +29,10 @@ export const PHYSICS = {
   }
 };
 
-const LAYOUT_A = [
+// --- MAP LAYOUTS ---
+
+// Layout A: The City/Castle (Corridors & Rooms)
+const LAYOUT_CITY = [
   [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
   [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
   [0,2,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,2,0],
@@ -53,7 +55,8 @@ const LAYOUT_A = [
   [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 ];
 
-const LAYOUT_B = [
+// Layout B: The Forest/Mountain (Organic, Dense)
+const LAYOUT_FOREST = [
   [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
   [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
   [0,2,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0],
@@ -76,10 +79,58 @@ const LAYOUT_B = [
   [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
 ];
 
+// Layout C: Riverlands/Sky (Islands & Bridges)
+const LAYOUT_RIVERS = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,2,2,2,2,0,0,0,0,0,0,0,0,0,0,2,2,2,2,2,0,0,0,0,0,0],
+  [0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0],
+  [0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,2,1,1,2,2,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,2,2,1,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,2,2,2,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,1,2,2,2,0,0],
+  [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,2,2,2,1,1,1,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,1,1,1,2,2,2,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,2,1,1,2,2,0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0,2,2,1,0,0,0,0],
+  [0,0,1,1,1,1,1,1,1,1,1,1,1,1,5,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0],
+  [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,9,1,0,0,0,0],
+  [0,0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,0,0,0,0,0],
+  [0,0,0,0,0,2,2,2,2,0,0,0,0,0,0,0,0,0,0,2,2,2,2,2,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+
+// Layout D: Desert/Wasteland (Open, Scattered Obstacles)
+const LAYOUT_OPEN = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
+  [0,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0],
+  [0,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0],
+  [0,2,1,1,2,2,1,1,1,2,2,1,1,1,1,1,1,1,2,2,1,1,1,2,2,1,1,1,2,0],
+  [0,2,1,1,2,2,1,1,1,2,2,1,1,1,1,1,1,1,2,2,1,1,1,2,2,1,1,1,2,0],
+  [0,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0],
+  [0,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0],
+  [0,2,1,1,1,1,1,2,2,2,2,2,1,1,1,1,1,2,2,2,2,2,1,1,1,1,1,1,2,0],
+  [0,2,1,1,1,1,1,2,1,1,1,2,1,1,5,1,1,2,1,1,1,2,1,1,1,1,1,1,2,0],
+  [0,2,1,1,1,1,1,2,1,1,1,2,1,1,1,1,1,2,1,1,1,2,1,1,1,1,1,1,2,0],
+  [0,2,1,1,1,1,1,2,2,2,2,2,1,1,1,1,1,2,2,2,2,2,1,1,1,1,1,1,2,0],
+  [0,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0],
+  [0,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0],
+  [0,2,1,1,2,2,1,1,1,2,2,1,1,1,1,1,1,1,2,2,1,1,1,2,2,1,1,1,2,0],
+  [0,2,1,1,2,2,1,1,1,2,2,1,1,1,1,1,1,1,2,2,1,1,1,2,2,1,1,1,2,0],
+  [0,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,9,1,2,0],
+  [0,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,0],
+  [0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+];
+
 export const GAME_LEVELS: LevelDefinition[] = [
   {
     id: 1,
-    mapLayout: LAYOUT_A,
+    mapLayout: LAYOUT_CITY,
     enemySpawnRate: 1.0,
     enemyTypes: ['CHASER'],
     playerSpawn: { x: 2, y: 2 },
@@ -96,10 +147,10 @@ export const GAME_LEVELS: LevelDefinition[] = [
   },
   {
     id: 2,
-    mapLayout: LAYOUT_B,
+    mapLayout: LAYOUT_FOREST,
     enemySpawnRate: 1.2,
     enemyTypes: ['CHASER', 'SLIMER', 'TURRET'],
-    playerSpawn: { x: 2, y: 16 }, // Start Bottom Left
+    playerSpawn: { x: 2, y: 16 },
     theme: {
       name: "ASHPERIA FOREST",
       floorColor: '#14532d',
@@ -113,10 +164,10 @@ export const GAME_LEVELS: LevelDefinition[] = [
   },
   {
     id: 3,
-    mapLayout: LAYOUT_B,
+    mapLayout: LAYOUT_RIVERS,
     enemySpawnRate: 1.3,
     enemyTypes: ['DASHER', 'SLIMER'],
-    playerSpawn: { x: 15, y: 10 }, // Start Middle
+    playerSpawn: { x: 15, y: 10 },
     theme: {
       name: "THE RIVERLANDS",
       floorColor: '#155e75',
@@ -130,10 +181,10 @@ export const GAME_LEVELS: LevelDefinition[] = [
   },
   {
     id: 4,
-    mapLayout: LAYOUT_A,
+    mapLayout: LAYOUT_CITY,
     enemySpawnRate: 1.5,
     enemyTypes: ['TANK', 'CHASER'],
-    playerSpawn: { x: 27, y: 2 }, // Start Top Right
+    playerSpawn: { x: 27, y: 2 },
     theme: {
       name: "DIAMOND CASTLE",
       floorColor: '#475569',
@@ -147,10 +198,10 @@ export const GAME_LEVELS: LevelDefinition[] = [
   },
   {
     id: 5,
-    mapLayout: LAYOUT_B,
+    mapLayout: LAYOUT_FOREST,
     enemySpawnRate: 1.6,
     enemyTypes: ['TANK', 'TURRET'],
-    playerSpawn: { x: 15, y: 15 }, // Start Bottom Center
+    playerSpawn: { x: 15, y: 15 },
     theme: {
       name: "THE MOUNTAIN",
       floorColor: '#451a03',
@@ -164,10 +215,10 @@ export const GAME_LEVELS: LevelDefinition[] = [
   },
   {
     id: 6,
-    mapLayout: LAYOUT_B,
+    mapLayout: LAYOUT_OPEN,
     enemySpawnRate: 1.4,
     enemyTypes: ['DASHER', 'CHASER'],
-    playerSpawn: { x: 5, y: 5 }, // Random
+    playerSpawn: { x: 5, y: 5 },
     theme: {
       name: "THE DEEP SANDS",
       floorColor: '#d97706',
@@ -181,7 +232,7 @@ export const GAME_LEVELS: LevelDefinition[] = [
   },
   {
     id: 7,
-    mapLayout: LAYOUT_B,
+    mapLayout: LAYOUT_OPEN,
     enemySpawnRate: 1.8,
     enemyTypes: ['SLIMER', 'TANK', 'TURRET'],
     playerSpawn: { x: 2, y: 2 },
@@ -198,10 +249,10 @@ export const GAME_LEVELS: LevelDefinition[] = [
   },
   {
     id: 8,
-    mapLayout: LAYOUT_A,
+    mapLayout: LAYOUT_CITY,
     enemySpawnRate: 2.0,
     enemyTypes: ['TANK', 'DASHER', 'TURRET'],
-    playerSpawn: { x: 15, y: 17 }, // Bottom Entrance
+    playerSpawn: { x: 15, y: 17 },
     theme: {
       name: "GOLDEN CASTLE",
       floorColor: '#854d0e',
@@ -215,7 +266,7 @@ export const GAME_LEVELS: LevelDefinition[] = [
   },
   {
     id: 9,
-    mapLayout: LAYOUT_A,
+    mapLayout: LAYOUT_RIVERS,
     enemySpawnRate: 2.5,
     enemyTypes: ['TANK', 'DASHER', 'TURRET', 'CHASER'],
     playerSpawn: { x: 2, y: 17 },
@@ -232,4 +283,4 @@ export const GAME_LEVELS: LevelDefinition[] = [
   }
 ];
 
-export const LEVELS = GAME_LEVELS; // Compatibility export
+export const LEVELS = GAME_LEVELS;
