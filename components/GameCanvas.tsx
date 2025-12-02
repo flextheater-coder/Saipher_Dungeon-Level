@@ -140,7 +140,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     }
   };
 
-  // --- N64/PS1 GRAPHICS ENGINE ---
   const renderStaticMap = (theme: LevelTheme) => {
     const canvas = document.createElement('canvas');
     canvas.width = LEVEL_MAP_WIDTH * TILE_SIZE;
@@ -158,44 +157,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           const py = y * TILE_SIZE;
   
           if (tile === TileType.FLOOR || tile === TileType.HEART_CONTAINER || tile === TileType.GOAL) {
-            // Gouraud Shading Simulation (Distance from center darkened)
             const dist = Math.hypot(x - LEVEL_MAP_WIDTH/2, y - LEVEL_MAP_HEIGHT/2);
             const shade = Math.min(0.3, dist / 30);
             
             ctx.fillStyle = theme.floorColor; 
             ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+            ctx.fillStyle = `rgba(0,0,0,${shade})`; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+            ctx.fillStyle = 'rgba(255,255,255,0.05)'; if ((x + y) % 2 === 0) ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
             
-            // PS1 Dithering / Noise
-            ctx.fillStyle = `rgba(0,0,0,${shade})`;
-            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-
-            // Checkerboard overlay for depth
-            ctx.fillStyle = 'rgba(255,255,255,0.05)';
-            if ((x + y) % 2 === 0) ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-            
-            // Procedural Decor
             const seed = (x * 37 + y * 13) % 100;
             if (seed > 85) {
                 if (theme.name.includes("DESERT")) {
-                    ctx.fillStyle = '#166534'; // Cactus
-                    ctx.fillRect(px + 10, py + 10, 4, 12);
-                    ctx.fillRect(px + 6, py + 16, 12, 4);
-                    ctx.fillRect(px + 18, py + 8, 4, 8);
+                    ctx.fillStyle = '#166534'; ctx.fillRect(px + 10, py + 10, 4, 12); ctx.fillRect(px + 6, py + 16, 12, 4); ctx.fillRect(px + 18, py + 8, 4, 8);
                 } else if (theme.name.includes("FOREST")) {
-                    ctx.fillStyle = '#22c55e'; // Bush
-                    ctx.beginPath(); ctx.arc(px + TILE_SIZE/2, py + TILE_SIZE/2, 6, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(px + TILE_SIZE/2, py + TILE_SIZE/2, 6, 0, Math.PI*2); ctx.fill();
                 } else if (theme.name.includes("MOUNTAIN")) {
-                    ctx.fillStyle = '#78350f'; // Rock
-                    ctx.beginPath(); ctx.moveTo(px + 10, py + 30); ctx.lineTo(px + 20, py + 15); ctx.lineTo(px + 30, py + 30); ctx.fill();
+                    ctx.fillStyle = '#78350f'; ctx.beginPath(); ctx.moveTo(px + 10, py + 30); ctx.lineTo(px + 20, py + 15); ctx.lineTo(px + 30, py + 30); ctx.fill();
                 } else {
                     ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(px + (seed%20), py + (seed%15), 4, 4);
                 }
             }
-            
-            // Grid Lines (Retro aesthetic)
-            ctx.strokeStyle = `rgba(0,0,0,0.2)`;
-            ctx.lineWidth = 1;
-            ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+            ctx.strokeStyle = `rgba(0,0,0,0.2)`; ctx.lineWidth = 1; ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
           }
         }
     }
@@ -207,36 +189,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
             const py = y * TILE_SIZE;
 
             if (tile === TileType.WALL) {
-                const wallFaceHeight = 24; // Taller walls for 3D effect
+                const wallFaceHeight = 24; 
                 if (y < LEVEL_MAP_HEIGHT - 1 && levelGrid.current[y+1][x] !== TileType.WALL) {
                     ctx.fillStyle = 'rgba(0,0,0,0.5)';
                     ctx.fillRect(px, py + TILE_SIZE, TILE_SIZE, 16);
                 }
-                
-                // Front Face (Vertex Lit Gradient)
                 const grad = ctx.createLinearGradient(px, py, px, py + TILE_SIZE);
-                grad.addColorStop(0, theme.wallColor);
-                grad.addColorStop(1, '#000'); // Bottom is darker
-                ctx.fillStyle = grad;
-                ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE - wallFaceHeight);
-                
-                // Top Face (Brightest)
-                ctx.fillStyle = theme.wallTopColor;
-                ctx.fillRect(px, py + TILE_SIZE - wallFaceHeight, TILE_SIZE, wallFaceHeight);
-                
-                // Edge Highlight
-                ctx.fillStyle = 'rgba(255,255,255,0.2)';
-                ctx.fillRect(px, py + TILE_SIZE - wallFaceHeight, TILE_SIZE, 2);
-                
-                // FOREST WALLS (Trees)
+                grad.addColorStop(0, theme.wallColor); grad.addColorStop(1, '#000');
+                ctx.fillStyle = grad; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE - wallFaceHeight);
+                ctx.fillStyle = theme.wallTopColor; ctx.fillRect(px, py + TILE_SIZE - wallFaceHeight, TILE_SIZE, wallFaceHeight);
+                ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(px, py + TILE_SIZE - wallFaceHeight, TILE_SIZE, 2);
                 if (theme.name.includes("FOREST")) {
-                    const seed = (x * 17 + y * 23) % 100;
-                    ctx.fillStyle = '#064e3b'; // Dark Pine
-                    ctx.beginPath();
-                    ctx.moveTo(px + TILE_SIZE/2, py - 10);
-                    ctx.lineTo(px + TILE_SIZE, py + 20);
-                    ctx.lineTo(px, py + 20);
-                    ctx.fill();
+                    ctx.fillStyle = '#064e3b'; ctx.beginPath(); ctx.moveTo(px + TILE_SIZE/2, py - 10); ctx.lineTo(px + TILE_SIZE, py + 20); ctx.lineTo(px, py + 20); ctx.fill();
                 }
             }
         }
@@ -517,6 +481,35 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     const spawn = currentLevelData.current.playerSpawn;
     playerPos.current = { x: spawn.x * TILE_SIZE, y: spawn.y * TILE_SIZE };
     playerVel.current = { x: 0, y: 0 };
+
+    // --- SAFE SPAWN LOGIC (Auto-corrects stuck spawns) ---
+    const checkSafeSpawn = () => {
+        const tx = Math.floor(playerPos.current.x / TILE_SIZE);
+        const ty = Math.floor(playerPos.current.y / TILE_SIZE);
+        
+        // If current tile is Floor (1), we are good
+        if (levelGrid.current[ty] && levelGrid.current[ty][tx] === TileType.FLOOR) return;
+
+        console.log("Spawn point blocked! Searching for safe ground...");
+        
+        // Spiral Search for nearest Floor tile
+        for (let r = 1; r < 8; r++) {
+            for (let dx = -r; dx <= r; dx++) {
+                for (let dy = -r; dy <= r; dy++) {
+                    const nx = tx + dx;
+                    const ny = ty + dy;
+                    if (ny >= 0 && ny < LEVEL_MAP_HEIGHT && nx >= 0 && nx < LEVEL_MAP_WIDTH) {
+                        if (levelGrid.current[ny][nx] === TileType.FLOOR) {
+                            playerPos.current.x = nx * TILE_SIZE;
+                            playerPos.current.y = ny * TILE_SIZE;
+                            return; // Found safe spot
+                        }
+                    }
+                }
+            }
+        }
+    };
+    checkSafeSpawn();
     
     if (levelIndex === 0) {
         playerHealth.current = 10; playerMaxHealth.current = 10; score.current = 0;
@@ -535,7 +528,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
     while (enemies.current.length < enemyCount && attempts < 100) {
         const tx = Math.floor(Math.random() * LEVEL_MAP_WIDTH);
         const ty = Math.floor(Math.random() * LEVEL_MAP_HEIGHT);
-        if (Math.hypot(tx - spawn.x, ty - spawn.y) < 8) { attempts++; continue; }
+        if (Math.hypot(tx * TILE_SIZE - playerPos.current.x, ty * TILE_SIZE - playerPos.current.y) < 200) { attempts++; continue; }
         if (levelGrid.current[ty][tx] === TileType.FLOOR) {
             const typeStr = allowedTypes[Math.floor(Math.random() * allowedTypes.length)];
             let eType: any = typeStr; 
@@ -848,7 +841,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ gameStatus, setGameStatu
           if (p.life <= 0) particles.current.splice(i, 1);
       }
       
-      // -- GHOST TRAIL CLEANUP (Fixes Cloning Bug) --
+      // -- GHOST TRAIL CLEANUP --
       for (let i = playerGhostTrail.current.length - 1; i >= 0; i--) {
           playerGhostTrail.current[i].life--;
           if (playerGhostTrail.current[i].life <= 0) {
