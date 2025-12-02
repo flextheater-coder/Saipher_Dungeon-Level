@@ -198,10 +198,11 @@ export const GAME_LEVELS: LevelDefinition[] = [
   },
   {
     id: 5,
-    mapLayout: LAYOUT_FOREST,
+    mapLayout: LAYOUT_FOREST, // This layout has a wall at 15,15
     enemySpawnRate: 1.6,
     enemyTypes: ['TANK', 'TURRET'],
-    playerSpawn: { x: 15, y: 15 },
+    // FIX: Moved spawn from {x: 15, y: 15} (Wall) to {x: 15, y: 17} (Floor)
+    playerSpawn: { x: 15, y: 17 }, 
     theme: {
       name: "THE MOUNTAIN",
       floorColor: '#451a03',
